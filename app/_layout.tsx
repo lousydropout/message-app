@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import "react-native-reanimated";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import sqliteService from "@/services/sqliteService";
 import { useAuthStore } from "@/stores/authStore";
 
 export const unstable_settings = {
@@ -26,6 +27,20 @@ export default function RootLayout() {
     const unsubscribe = initialize();
     return unsubscribe;
   }, [initialize]);
+
+  useEffect(() => {
+    // Initialize SQLite database
+    const initializeSQLite = async () => {
+      try {
+        await sqliteService.initialize();
+        console.log("✅ SQLite initialized successfully");
+      } catch (error) {
+        console.error("❌ SQLite initialization failed:", error);
+      }
+    };
+
+    initializeSQLite();
+  }, []);
 
   useEffect(() => {
     // Handle navigation based on auth state
