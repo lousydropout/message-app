@@ -1,0 +1,54 @@
+# React Native + Firebase Notetaking App Rules
+
+## Core Project Rules
+
+### Technology Stack
+
+- React Native 0.81.4 with Expo Go for development
+- Firebase Web SDK (required for Expo Go compatibility)
+- Zustand for state management (not React Context)
+- Expo Router for file-based navigation
+- TypeScript for type safety
+
+### Development Practices
+
+- Use stable dependency versions, avoid canary releases
+- Implement production-level security rules from the start
+- Use explicit initialization patterns to prevent memory leaks
+- Prefer manual testing components over complex Jest setup initially
+
+### Firebase Integration Patterns
+
+- Always use client-side queries with `where` clauses for security
+- Implement server-side security rules for data protection
+- Use `onSnapshot` for real-time subscriptions
+- Explicitly convert Firestore Timestamps to Date objects
+- Create composite indexes for multi-field queries
+
+### Component Architecture
+
+- Use Zustand stores for global state management
+- Implement explicit initialization methods that return cleanup functions
+- Use `useEffect` to sync local state with prop changes
+- Prefer container/presentational component separation
+
+### Error Handling
+
+- Implement try-catch blocks at store level
+- Use Alert dialogs for user feedback
+- Log errors for debugging but don't expose sensitive information
+- Handle loading states properly
+
+### Security Considerations
+
+- Never allow broad read access in Firebase rules
+- Always validate user ownership of data
+- Use anonymous authentication initially, upgrade path to email/password
+- Implement proper data validation on both client and server
+
+## File Organization
+
+- Store business logic in Zustand stores
+- Keep components focused on presentation
+- Use TypeScript interfaces for data structures
+- Organize routes using Expo Router file-based system

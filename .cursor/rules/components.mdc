@@ -1,0 +1,54 @@
+@base.mdc
+
+Description: React Native component development patterns
+Globs: components/**/\*.tsx, app/**/\*.tsx
+
+## Component Development Rules
+
+### State Management
+
+- Use `useState` for local component state
+- Use `useEffect` to sync local state with prop changes
+- Never rely on `useState` to automatically update with prop changes
+- Use Zustand stores for global state that needs to persist
+
+### Props and State Synchronization
+
+```typescript
+// ❌ Wrong: useState doesn't sync with prop changes
+const [title, setTitle] = useState(initialTitle);
+
+// ✅ Correct: Use useEffect to sync with props
+const [title, setTitle] = useState(initialTitle);
+useEffect(() => {
+  setTitle(initialTitle);
+}, [initialTitle]);
+```
+
+### Component Lifecycle
+
+- Always clean up subscriptions in useEffect cleanup functions
+- Use explicit initialization patterns for stores
+- Handle loading states properly
+- Implement proper error boundaries
+
+### Navigation Patterns
+
+- Use Expo Router's `router.push()` for navigation
+- Implement proper back navigation with `router.back()`
+- Use dynamic routes for parameterized navigation
+- Handle navigation state properly
+
+### Form Components
+
+- Use controlled components with local state
+- Implement proper validation
+- Show loading states during save operations
+- Provide clear user feedback for errors
+
+### List Components
+
+- Use FlatList for performance with large datasets
+- Implement proper key extraction
+- Handle empty states gracefully
+- Use proper list item components

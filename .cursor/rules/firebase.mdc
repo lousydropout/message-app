@@ -1,0 +1,61 @@
+@base.mdc
+
+Description: Firebase integration and data management patterns
+Globs: stores/**/\*.ts, config/**/\*.ts
+
+## Firebase Integration Rules
+
+### Authentication
+
+- Use `initializeAuth` with `getReactNativePersistence` for React Native
+- Implement explicit initialization to prevent memory leaks
+- Use anonymous authentication initially
+- Store auth state in Zustand store
+
+### Firestore Operations
+
+- Always use client-side queries with `where` clauses
+- Implement server-side security rules for data protection
+- Use `onSnapshot` for real-time subscriptions
+- Handle subscription cleanup properly
+
+### Data Validation
+
+- Convert Firestore Timestamps to Date objects explicitly
+- Validate data integrity with TypeScript interfaces
+- Implement strict validation for required fields
+- Handle corrupted data gracefully
+
+### Security Rules
+
+```javascript
+// ✅ Correct: User-scoped access
+match /notes/{noteId} {
+  allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+  allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+}
+
+// ❌ Wrong: Broad access
+allow read, write: if request.auth != null;
+```
+
+### Error Handling
+
+- Implement try-catch blocks for all Firebase operations
+- Log errors for debugging
+- Provide user-friendly error messages
+- Handle network errors gracefully
+
+### Real-time Subscriptions
+
+- Use `onSnapshot` for real-time updates
+- Implement proper cleanup with unsubscribe functions
+- Handle subscription errors
+- Optimize queries with proper indexes
+
+### Data Synchronization
+
+- Use optimistic updates for better UX
+- Implement proper conflict resolution
+- Handle offline scenarios gracefully
+- Plan for SQLite integration later

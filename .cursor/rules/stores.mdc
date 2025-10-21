@@ -1,0 +1,62 @@
+@base.mdc
+
+Description: Zustand state management patterns
+Globs: stores/\*_/_.ts
+
+## Zustand Store Rules
+
+### Store Architecture
+
+- Use explicit initialization methods that return cleanup functions
+- Implement proper error handling with try-catch blocks
+- Use optimistic updates for better user experience
+- Handle loading states consistently
+
+### Store Initialization
+
+```typescript
+// ✅ Correct: Explicit initialization with cleanup
+export const useAuthStore = create<AuthState>((set) => ({
+  initialize() {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      set({ user, loading: false });
+    });
+    return unsubscribe; // Return cleanup function
+  },
+}));
+```
+
+### State Updates
+
+- Use `set` function for state updates
+- Implement proper error handling
+- Use optimistic updates when appropriate
+- Handle loading states consistently
+
+### Store Composition
+
+- Keep stores focused on specific domains
+- Use TypeScript interfaces for state shape
+- Implement proper error state management
+- Use proper naming conventions
+
+### Memory Management
+
+- Always return cleanup functions from subscriptions
+- Implement proper unsubscribe patterns
+- Avoid memory leaks with explicit cleanup
+- Use proper dependency arrays in useEffect
+
+### Error Handling
+
+- Implement try-catch blocks for all async operations
+- Set error state for user feedback
+- Log errors for debugging
+- Provide meaningful error messages
+
+### Real-time Data
+
+- Use Firestore subscriptions in stores
+- Implement proper cleanup
+- Handle subscription errors
+- Optimize for performance
