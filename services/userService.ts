@@ -1,12 +1,16 @@
 import { db } from "@/config/firebase";
 import { User } from "@/types/User";
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
+  query,
   serverTimestamp,
   setDoc,
   Timestamp,
   updateDoc,
+  where,
 } from "firebase/firestore";
 
 export class UserService {
@@ -195,14 +199,75 @@ export class UserService {
   }
 
   /**
-   * Update last seen timestamp
+   * Search users by email or display name
    */
-  async updateLastSeen(userId: string): Promise<void> {
+  async searchUsers(
+    searchQuery: string,
+    currentUserId: string
+  ): Promise<User[]> {
     try {
-      await this.updateUserProfile(userId, {});
+      if (!searchQuery.trim()) {
+        return [];
+      }
+
+      const searchTerm = searchQuery.toLowerCase().trim();
+
+      // Search by email
+      const emailQuery = query(
+        collection(db, "users"),
+        where("email", ">=", searchTerm),
+        where("email", "<=", searchTerm + "\uf8ff")
+      );
+
+      // Search by display name
+      const nameQuery = query(
+        collection(db, "users"),
+        where("displayName", ">=", searchTerm),
+        where("displayName", "<=", searchTerm + "\uf8ff")
+      );
+
+      const [emailSnapshot, nameSnapshot] = await Promise.all([
+        getDocs(emailQuery),
+        getDocs(nameQuery),
+      ]);
+
+      const emailResults = emailSnapshot.docs.map((doc) => doc.data() as User);
+      const nameResults = nameSnapshot.docs.map((doc) => doc.data() as User);
+
+      // Combine and deduplicate results
+      const allResults = [...emailResults, ...nameResults];
+      const uniqueResults = allResults.filter(
+        (user, index, self) =>
+          index === self.findIndex((u) => u.id === user.id) &&
+          user.id !== currentUserId
+      );
+
+      return uniqueResults.slice(0, 10);
     } catch (error) {
-      console.error("Error updating last seen:", error);
-      // Don't throw error for last seen updates as they're not critical
+      console.error("Error searching users:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get multiple users by their IDs
+   */
+  async getUsersByIds(userIds: string[]): Promise<User[]> {
+    try {
+      if (userIds.length === 0) {
+        return [];
+      }
+
+      const usersQuery = query(
+        collection(db, "users"),
+        where("id", "in", userIds)
+      );
+
+      const querySnapshot = await getDocs(usersQuery);
+      return querySnapshot.docs.map((doc) => doc.data() as User);
+    } catch (error) {
+      console.error("Error getting users by IDs:", error);
+      throw error;
     }
   }
 }

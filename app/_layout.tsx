@@ -46,7 +46,8 @@ export default function RootLayout() {
       }
     } else if (user && userProfile) {
       // User is signed in and has profile, redirect to main app
-      if (inAuthGroup || inProfileGroup) {
+      // But allow navigation to profile/edit for editing
+      if (inAuthGroup || (inProfileGroup && segments[1] !== "edit")) {
         router.replace("/(tabs)");
       }
     }
