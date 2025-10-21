@@ -79,6 +79,7 @@ export function MessageBubble({
 
     const status = message.status;
     if (status === "sending") return "Sending...";
+    if (status === "queued") return "⏳ Queued"; // NEW
     if (status === "sent") return "Sent";
     if (status === "read") return "Read";
     if (status === "failed") return "Failed - Tap to retry";
@@ -143,6 +144,7 @@ export function MessageBubble({
                 style={[
                   styles.statusText,
                   message.status === "read" && styles.readStatusText,
+                  message.status === "queued" && styles.queuedStatusText, // NEW
                   message.status === "failed" && styles.failedStatusText,
                 ]}
                 onPress={message.status === "failed" ? handleRetry : undefined}
@@ -266,5 +268,9 @@ const styles = StyleSheet.create({
   },
   failedStatusText: {
     color: "#FF6B6B",
+  },
+  queuedStatusText: {
+    color: "#FFA500",
+    fontStyle: "italic",
   },
 });

@@ -98,13 +98,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       });
 
       // Handle network state changes
-      const { syncStatus, isSyncing } = get();
+      const { isSyncing } = get();
 
-      if (isOnline && syncStatus === "idle") {
-        // Network came back online and we're not syncing
-        console.log("🔄 Network restored - ready for sync");
-        set({ syncStatus: "synced" });
-      } else if (!isOnline && isSyncing) {
+      if (!isOnline && isSyncing) {
         // Network went offline while syncing
         console.log("❌ Network lost during sync");
         set({
@@ -113,6 +109,39 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
           lastError: "Network connection lost during sync",
         });
       }
+    });
+
+    // Subscribe to isOnline changes for automatic sync
+    let previousIsOnline = get().isOnline;
+    const unsubscribeSync = useConnectionStore.subscribe((state) => {
+      const isOnline = state.isOnline;
+      const isSyncing = state.isSyncing;
+
+      // Only trigger sync when going from offline to online AND not already syncing
+      if (isOnline && previousIsOnline === false && !isSyncing) {
+        console.log("🔄 Network restored - triggering sync via subscription");
+
+        // Update sync status to indicate we're about to sync
+        set({ syncStatus: "syncing", isSyncing: true });
+
+        // Small delay to ensure connection is stable
+        setTimeout(() => {
+          import("@/stores/messagesStore")
+            .then((module) => {
+              module.useMessagesStore.getState().syncQueuedMessages();
+            })
+            .catch((error) => {
+              console.error("Failed to trigger sync:", error);
+              // Reset sync status on error
+              set({
+                syncStatus: "error",
+                isSyncing: false,
+                lastError: error.message,
+              });
+            });
+        }, 500);
+      }
+      previousIsOnline = isOnline;
     });
 
     // Get initial network state
@@ -131,10 +160,16 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         isOnline,
         connectionStatus,
         networkType,
+        // Set initial sync status based on connection
+        syncStatus: isOnline ? "synced" : "idle",
       });
     });
 
-    return unsubscribe;
+    // Return cleanup function
+    return () => {
+      unsubscribe();
+      unsubscribeSync();
+    };
   },
 
   // Set online status manually

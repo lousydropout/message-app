@@ -8,6 +8,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import "react-native-reanimated";
 
+import NetworkStatusBar from "@/components/NetworkStatusBar";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import sqliteService from "@/services/sqliteService";
 import { useAuthStore } from "@/stores/authStore";
@@ -78,6 +79,7 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+      <NetworkStatusBar />
       <Stack>
         <Stack.Screen name="auth/login" options={{ headerShown: false }} />
         <Stack.Screen

@@ -7,7 +7,7 @@ export interface Message {
   text: string;
   timestamp: Timestamp;
   readBy: { [userId: string]: Timestamp };
-  status?: "sending" | "sent" | "read" | "failed"; // New field
+  status?: "sending" | "sent" | "read" | "failed" | "queued"; // Message status including queued
   aiFeatures?: {
     translation?: string;
     culturalHints?: string[];
