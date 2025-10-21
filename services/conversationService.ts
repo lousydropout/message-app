@@ -1,0 +1,196 @@
+import { db } from "@/config/firebase";
+import { Conversation } from "@/types/Conversation";
+import { Message } from "@/types/Message";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  Unsubscribe,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+
+class ConversationService {
+  private conversationsRef = collection(db, "conversations");
+  private messagesRef = collection(db, "messages");
+
+  async createConversation(
+    participants: string[],
+    type: "direct" | "group",
+    name?: string
+  ): Promise<string> {
+    try {
+      const conversationData = {
+        type,
+        participants,
+        name: name || null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      const docRef = await addDoc(this.conversationsRef, conversationData);
+      return docRef.id;
+    } catch (error) {
+      console.error("Error creating conversation:", error);
+      throw error;
+    }
+  }
+
+  async getConversation(conversationId: string): Promise<Conversation | null> {
+    try {
+      const docRef = doc(this.conversationsRef, conversationId);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        return {
+          id: docSnap.id,
+          ...docSnap.data(),
+        } as Conversation;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error getting conversation:", error);
+      throw error;
+    }
+  }
+
+  async getUserConversations(userId: string): Promise<Conversation[]> {
+    try {
+      // Temporary: Use simple query without orderBy to avoid index requirement
+      const q = query(
+        this.conversationsRef,
+        where("participants", "array-contains", userId)
+      );
+
+      const querySnapshot = await getDocs(q);
+      const conversations: Conversation[] = [];
+
+      querySnapshot.forEach((doc) => {
+        conversations.push({
+          id: doc.id,
+          ...doc.data(),
+        } as Conversation);
+      });
+
+      // Sort on client side until index is ready
+      conversations.sort((a, b) => {
+        const aTime = a.updatedAt?.toDate?.() || new Date(0);
+        const bTime = b.updatedAt?.toDate?.() || new Date(0);
+        return bTime.getTime() - aTime.getTime();
+      });
+
+      return conversations;
+    } catch (error) {
+      console.error("Error getting user conversations:", error);
+      throw error;
+    }
+  }
+
+  async getOrCreateDirectConversation(
+    userId1: string,
+    userId2: string
+  ): Promise<string> {
+    try {
+      // Check if direct conversation already exists
+      const q = query(
+        this.conversationsRef,
+        where("type", "==", "direct"),
+        where("participants", "array-contains", userId1)
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      for (const doc of querySnapshot.docs) {
+        const data = doc.data() as Conversation;
+        if (
+          data.participants.includes(userId2) &&
+          data.participants.length === 2
+        ) {
+          return doc.id;
+        }
+      }
+
+      // Create new direct conversation
+      return await this.createConversation([userId1, userId2], "direct");
+    } catch (error) {
+      console.error("Error getting or creating direct conversation:", error);
+      throw error;
+    }
+  }
+
+  async updateConversationLastMessage(
+    conversationId: string,
+    message: Message
+  ): Promise<void> {
+    try {
+      const conversationRef = doc(this.conversationsRef, conversationId);
+      await updateDoc(conversationRef, {
+        lastMessage: {
+          id: message.id,
+          text: message.text,
+          senderId: message.senderId,
+          timestamp: message.timestamp,
+        },
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("Error updating conversation last message:", error);
+      throw error;
+    }
+  }
+
+  subscribeToConversations(
+    userId: string,
+    callback: (conversations: Conversation[]) => void
+  ): Unsubscribe {
+    // Temporary: Use simple query without orderBy to avoid index requirement
+    const q = query(
+      this.conversationsRef,
+      where("participants", "array-contains", userId)
+    );
+
+    return onSnapshot(q, (querySnapshot) => {
+      const conversations: Conversation[] = [];
+      querySnapshot.forEach((doc) => {
+        conversations.push({
+          id: doc.id,
+          ...doc.data(),
+        } as Conversation);
+      });
+
+      // Sort on client side until index is ready
+      conversations.sort((a, b) => {
+        const aTime = a.updatedAt?.toDate?.() || new Date(0);
+        const bTime = b.updatedAt?.toDate?.() || new Date(0);
+        return bTime.getTime() - aTime.getTime();
+      });
+
+      callback(conversations);
+    });
+  }
+
+  subscribeToConversation(
+    conversationId: string,
+    callback: (conversation: Conversation | null) => void
+  ): Unsubscribe {
+    const conversationRef = doc(this.conversationsRef, conversationId);
+
+    return onSnapshot(conversationRef, (doc) => {
+      if (doc.exists()) {
+        callback({
+          id: doc.id,
+          ...doc.data(),
+        } as Conversation);
+      } else {
+        callback(null);
+      }
+    });
+  }
+}
+
+export default new ConversationService();

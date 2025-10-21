@@ -1,11 +1,11 @@
 import { useAuthStore } from "@/stores/authStore";
 import { useContactsStore } from "@/stores/contactsStore";
 import { User } from "@/types/User";
+import { FlashList } from "@shopify/flash-list";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   StyleSheet,
   Text,
   TextInput,
@@ -188,12 +188,13 @@ export default function UserSearch({ onUserSelect }: UserSearchProps) {
       )}
 
       {searchQuery.trim() && !searchLoading && (
-        <FlatList
+        <FlashList
           data={searchResults}
           keyExtractor={(item) => item.id}
           renderItem={renderUserCard}
           style={styles.resultsList}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>No users found</Text>

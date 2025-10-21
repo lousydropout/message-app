@@ -4,7 +4,9 @@ import UserSearch from "@/components/UserSearch";
 import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { useContactsStore } from "@/stores/contactsStore";
+import { useMessagesStore } from "@/stores/messagesStore";
 import { User } from "@/types/User";
+import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -19,6 +21,7 @@ export default function ContactsScreen() {
   const { user } = useAuthStore();
   const { friends, friendRequests, loading, loadFriends, loadFriendRequests } =
     useContactsStore();
+  const { createOrOpenDirectConversation } = useMessagesStore();
 
   const [activeTab, setActiveTab] = useState<"friends" | "requests" | "search">(
     "friends"
@@ -66,9 +69,16 @@ export default function ContactsScreen() {
     }
   }, [friendRequests]);
 
-  const handleFriendSelect = (friend: User) => {
-    // TODO: Navigate to conversation with friend
-    Alert.alert("Message", `Start conversation with ${friend.displayName}`);
+  const handleFriendSelect = async (friend: User) => {
+    if (!user) return;
+
+    try {
+      const conversationId = await createOrOpenDirectConversation(friend.id);
+      router.push(`/conversation/${conversationId}`);
+    } catch (error) {
+      console.error("Error starting conversation:", error);
+      Alert.alert("Error", "Failed to start conversation. Please try again.");
+    }
   };
 
   const handleBlockFriend = (friend: User) => {

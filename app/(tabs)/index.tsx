@@ -1,6 +1,6 @@
 // app/(tabs)/index.tsx
-import { NotesList } from "@/components/NotesList";
+import { ConversationsList } from "@/components/ConversationsList";
 
 export default function HomeScreen() {
-  return <NotesList />;
+  return <ConversationsList />;
 }

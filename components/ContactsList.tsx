@@ -1,10 +1,10 @@
 import { useAuthStore } from "@/stores/authStore";
 import { useContactsStore } from "@/stores/contactsStore";
 import { User } from "@/types/User";
+import { FlashList } from "@shopify/flash-list";
 import React, { useState } from "react";
 import {
   Alert,
-  FlatList,
   StyleSheet,
   Text,
   TextInput,
@@ -104,12 +104,13 @@ export default function ContactsList({
         autoCorrect={false}
       />
 
-      <FlatList
+      <FlashList
         data={filteredFriends}
         keyExtractor={(item) => item.id}
         renderItem={renderFriendCard}
         style={styles.friendsList}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
