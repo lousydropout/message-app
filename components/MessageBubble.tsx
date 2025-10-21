@@ -17,6 +17,7 @@ interface MessageBubbleProps {
   sender?: User;
   showDisplayName?: boolean;
   onLongPress?: (message: Message) => void;
+  onRetry?: (message: Message) => void;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -27,6 +28,7 @@ export function MessageBubble({
   sender,
   showDisplayName = true,
   onLongPress,
+  onRetry,
 }: MessageBubbleProps) {
   const { user } = useAuthStore();
   const [senderProfile, setSenderProfile] = useState<User | null>(
@@ -72,11 +74,25 @@ export function MessageBubble({
         });
   };
 
-  const getReadReceiptStatus = () => {
+  const getMessageStatus = () => {
     if (!isOwnMessage) return null;
+
+    const status = message.status;
+    if (status === "sending") return "Sending...";
+    if (status === "sent") return "Sent";
+    if (status === "read") return "Read";
+    if (status === "failed") return "Failed - Tap to retry";
+
+    // Fallback for messages without status (legacy)
     const readBy = message.readBy || {};
     const readCount = Object.keys(readBy).length;
-    return readCount <= 1 ? "sent" : "read";
+    return readCount <= 1 ? "Sent" : "Read";
+  };
+
+  const handleRetry = () => {
+    if (onRetry && message.status === "failed") {
+      onRetry(message);
+    }
   };
 
   return (
@@ -103,6 +119,7 @@ export function MessageBubble({
           style={[
             styles.bubble,
             isOwnMessage ? styles.ownBubble : styles.otherBubble,
+            message.status === "failed" && styles.failedBubble,
           ]}
         >
           <Text
@@ -121,13 +138,17 @@ export function MessageBubble({
           <Text style={styles.timestamp}>{formatTime(message.timestamp)}</Text>
 
           {isOwnMessage && (
-            <View style={styles.readReceipt}>
-              {getReadReceiptStatus() === "sent" && (
-                <Text style={styles.checkmark}>✓</Text>
-              )}
-              {getReadReceiptStatus() === "read" && (
-                <Text style={[styles.checkmark, styles.readCheckmark]}>✓✓</Text>
-              )}
+            <View style={styles.statusContainer}>
+              <Text
+                style={[
+                  styles.statusText,
+                  message.status === "read" && styles.readStatusText,
+                  message.status === "failed" && styles.failedStatusText,
+                ]}
+                onPress={message.status === "failed" ? handleRetry : undefined}
+              >
+                {getMessageStatus()}
+              </Text>
             </View>
           )}
         </View>
@@ -200,6 +221,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#E5E5EA",
     borderBottomLeftRadius: 4,
   },
+  failedBubble: {
+    backgroundColor: "#FFE5E5",
+    borderColor: "#FF6B6B",
+    borderWidth: 1,
+  },
   messageText: {
     fontSize: 16,
     lineHeight: 22,
@@ -226,15 +252,19 @@ const styles = StyleSheet.create({
     color: "#666",
     marginRight: 4,
   },
-  readReceipt: {
+  statusContainer: {
     flexDirection: "row",
     alignItems: "center",
   },
-  checkmark: {
-    fontSize: 12,
+  statusText: {
+    fontSize: 11,
     color: "#666",
+    fontWeight: "500",
   },
-  readCheckmark: {
+  readStatusText: {
     color: "#007AFF",
+  },
+  failedStatusText: {
+    color: "#FF6B6B",
   },
 });

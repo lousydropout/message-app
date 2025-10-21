@@ -26,6 +26,7 @@ export interface MessagesState {
   loadMessages: (conversationId: string) => Promise<void>;
   subscribeToMessages: (conversationId: string) => void;
   sendMessage: (conversationId: string, text: string) => Promise<void>;
+  retryMessage: (conversationId: string, messageId: string) => Promise<void>;
   markAsRead: (conversationId: string, userId: string) => Promise<void>;
   updateTyping: (conversationId: string, isTyping: boolean) => Promise<void>;
   createOrOpenDirectConversation: (otherUserId: string) => Promise<string>;
@@ -172,15 +173,17 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     if (!user) throw new Error("User not authenticated");
 
     set({ sendingMessage: true });
+    const tempId = `temp_${Date.now()}`;
     try {
       // Optimistic update - add message to local state immediately
       const tempMessage: Message = {
-        id: `temp_${Date.now()}`,
+        id: tempId,
         conversationId,
         senderId: user.uid,
         text,
         timestamp: new Date() as any,
         readBy: { [user.uid]: new Date() as any },
+        status: "sending",
         createdAt: new Date() as any,
         updatedAt: new Date() as any,
       };
@@ -207,21 +210,21 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         messages: {
           ...state.messages,
           [conversationId]: state.messages[conversationId]?.map((msg) =>
-            msg.id === tempMessage.id ? message : msg
-          ) || [message],
+            msg.id === tempId ? { ...message, status: "sent" } : msg
+          ) || [{ ...message, status: "sent" }],
         },
         sendingMessage: false,
       }));
     } catch (error) {
       console.error("Error sending message:", error);
 
-      // Remove temp message on error
+      // Mark temp message as failed instead of removing
       set((state) => ({
         messages: {
           ...state.messages,
           [conversationId]:
-            state.messages[conversationId]?.filter(
-              (msg) => msg.id !== `temp_${Date.now()}`
+            state.messages[conversationId]?.map((msg) =>
+              msg.id === tempId ? { ...msg, status: "failed" } : msg
             ) || [],
         },
         sendingMessage: false,
@@ -230,9 +233,86 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  async retryMessage(conversationId: string, messageId: string) {
+    const { user } = useAuthStore.getState();
+    if (!user) throw new Error("User not authenticated");
+
+    const state = get();
+    const messages = state.messages[conversationId] || [];
+    const failedMessage = messages.find((msg) => msg.id === messageId);
+
+    if (!failedMessage || failedMessage.status !== "failed") {
+      throw new Error("Message not found or not in failed state");
+    }
+
+    // Change status to sending
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [conversationId]:
+          state.messages[conversationId]?.map((msg) =>
+            msg.id === messageId ? { ...msg, status: "sending" } : msg
+          ) || [],
+      },
+    }));
+
+    try {
+      // Send the message again
+      const message = await messageService.sendMessage(
+        conversationId,
+        user.uid,
+        failedMessage.text
+      );
+
+      // Remove failed message and add new confirmed message
+      set((state) => ({
+        messages: {
+          ...state.messages,
+          [conversationId]: [
+            { ...message, status: "sent" },
+            ...(state.messages[conversationId]?.filter(
+              (msg) => msg.id !== messageId
+            ) || []),
+          ],
+        },
+      }));
+    } catch (error) {
+      console.error("Error retrying message:", error);
+
+      // Revert to failed status
+      set((state) => ({
+        messages: {
+          ...state.messages,
+          [conversationId]:
+            state.messages[conversationId]?.map((msg) =>
+              msg.id === messageId ? { ...msg, status: "failed" } : msg
+            ) || [],
+        },
+      }));
+      throw error;
+    }
+  },
+
   async markAsRead(conversationId: string, userId: string) {
     try {
       await messageService.markConversationAsRead(conversationId, userId);
+
+      // Update local state to reflect read status
+      set((state) => ({
+        messages: {
+          ...state.messages,
+          [conversationId]:
+            state.messages[conversationId]?.map((message) => ({
+              ...message,
+              readBy: {
+                ...message.readBy,
+                [userId]: new Date() as any, // Mark as read locally
+              },
+              // Update status to 'read' if this user is not the sender
+              status: message.senderId !== userId ? "read" : message.status,
+            })) || [],
+        },
+      }));
     } catch (error) {
       console.error("Error marking conversation as read:", error);
       throw error;
