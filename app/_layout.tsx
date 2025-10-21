@@ -11,6 +11,7 @@ import "react-native-reanimated";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import sqliteService from "@/services/sqliteService";
 import { useAuthStore } from "@/stores/authStore";
+import { useConnectionStore } from "@/stores/connectionStore";
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -19,6 +20,7 @@ export const unstable_settings = {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const { user, userProfile, loading, initialize } = useAuthStore();
+  const { initialize: initializeConnection } = useConnectionStore();
   const router = useRouter();
   const segments = useSegments();
 
@@ -41,6 +43,12 @@ export default function RootLayout() {
 
     initializeSQLite();
   }, []);
+
+  useEffect(() => {
+    // Initialize connection monitoring
+    const unsubscribeConnection = initializeConnection();
+    return unsubscribeConnection;
+  }, [initializeConnection]);
 
   useEffect(() => {
     // Handle navigation based on auth state

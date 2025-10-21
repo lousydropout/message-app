@@ -1,4 +1,8 @@
 import sqliteService from "@/services/sqliteService";
+import {
+  connectionHelpers,
+  useConnectionStore,
+} from "@/stores/connectionStore";
 import { Message } from "@/types/Message";
 import React, { useState } from "react";
 import {
@@ -15,6 +19,19 @@ export default function TestSQLiteScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
+
+  // Connection store state
+  const {
+    isOnline,
+    connectionStatus,
+    networkType,
+    syncStatus,
+    isSyncing,
+    queuedMessagesCount,
+    failedMessagesCount,
+    syncStats,
+    lastError,
+  } = useConnectionStore();
 
   // Test 1: Initialize SQLite
   const testInitialize = async () => {
@@ -116,11 +133,91 @@ export default function TestSQLiteScreen() {
     }
   };
 
+  // Test 7: Connection Store Actions
+  const testConnectionActions = () => {
+    const {
+      setOnline,
+      setSyncStatus,
+      setError,
+      clearError,
+      updateQueueCounts,
+    } = useConnectionStore.getState();
+
+    // Test manual offline
+    setOnline(false);
+    setTimeout(() => {
+      // Test manual online
+      setOnline(true);
+    }, 2000);
+
+    // Test sync status changes
+    setTimeout(() => {
+      setSyncStatus("syncing");
+    }, 1000);
+
+    setTimeout(() => {
+      setSyncStatus("synced");
+    }, 3000);
+
+    // Test error handling
+    setTimeout(() => {
+      setError("Test error message");
+    }, 4000);
+
+    setTimeout(() => {
+      clearError();
+    }, 6000);
+
+    // Test queue counts
+    setTimeout(() => {
+      updateQueueCounts(5, 2);
+    }, 5000);
+
+    alert("Connection store actions started - watch the status!");
+  };
+
+  // Test 8: Helper Functions
+  const testHelperFunctions = () => {
+    const helpers = connectionHelpers;
+
+    console.log("Should sync:", helpers.shouldSync());
+    console.log("Is healthy:", helpers.isHealthy());
+    console.log("Should queue:", helpers.shouldQueueMessages());
+    console.log("Retry delay:", helpers.getRetryDelay(3));
+    console.log("Network emoji:", helpers.getNetworkEmoji());
+    console.log("Sync emoji:", helpers.getSyncEmoji());
+    console.log("Summary:", helpers.getConnectionSummary());
+
+    alert("Check console for helper function results!");
+  };
+
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>SQLite Service Tests</Text>
 
-      {/* Test 1: Initialize */}
+      {/* Connection Status Display */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>🌐 Connection Status</Text>
+        <Text style={styles.statusText}>
+          Status: {connectionHelpers.getNetworkEmoji()} {connectionStatus} (
+          {networkType})
+        </Text>
+        <Text style={styles.statusText}>
+          Sync: {connectionHelpers.getSyncEmoji()} {syncStatus}{" "}
+          {isSyncing ? "(Syncing...)" : ""}
+        </Text>
+        <Text style={styles.statusText}>
+          Queue: {queuedMessagesCount} queued, {failedMessagesCount} failed
+        </Text>
+        <Text style={styles.statusText}>
+          Stats: {syncStats.messagesSynced} synced, {syncStats.retryCount}{" "}
+          retries
+        </Text>
+        {lastError && <Text style={styles.errorText}>Error: {lastError}</Text>}
+        <Text style={styles.statusText}>
+          Summary: {connectionHelpers.getConnectionSummary()}
+        </Text>
+      </View>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>1. Initialize SQLite</Text>
         <Button title="Initialize Database" onPress={testInitialize} />
@@ -183,6 +280,29 @@ export default function TestSQLiteScreen() {
         <Text style={styles.sectionTitle}>6. Clear All Data</Text>
         <Button title="Clear Data" onPress={testClearData} color="red" />
       </View>
+
+      {/* Test 7: Connection Store Actions */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>7. Connection Store Actions</Text>
+        <Button
+          title="Test Connection Actions"
+          onPress={testConnectionActions}
+        />
+        <Text style={styles.helpText}>
+          This will test manual status changes, sync states, errors, and queue
+          counts over 6 seconds.
+        </Text>
+      </View>
+
+      {/* Test 8: Helper Functions */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>8. Helper Functions</Text>
+        <Button title="Test Helper Functions" onPress={testHelperFunctions} />
+        <Text style={styles.helpText}>
+          Check console for helper function results (should sync, is healthy,
+          etc.)
+        </Text>
+      </View>
     </ScrollView>
   );
 }
@@ -232,5 +352,22 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     fontWeight: "bold",
+  },
+  statusText: {
+    fontSize: 14,
+    marginVertical: 2,
+    color: "#333",
+  },
+  errorText: {
+    fontSize: 14,
+    marginVertical: 2,
+    color: "#d32f2f",
+    fontWeight: "bold",
+  },
+  helpText: {
+    fontSize: 12,
+    marginTop: 5,
+    color: "#666",
+    fontStyle: "italic",
   },
 });
