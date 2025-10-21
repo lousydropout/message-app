@@ -13,7 +13,7 @@ export interface Conversation {
     senderId: string;
     timestamp: Timestamp;
   };
-  unreadCount?: number; // Number of unread messages for current user
+  unreadCounts?: Record<string, number>; // Track unread count per user atomically
 }
 
 export interface ConversationPreview {
@@ -27,5 +27,5 @@ export interface ConversationPreview {
     timestamp: Timestamp;
   };
   updatedAt: Timestamp;
-  unreadCount?: number;
+  unreadCounts?: Record<string, number>;
 }

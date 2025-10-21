@@ -6,14 +6,13 @@ import {
   doc,
   DocumentSnapshot,
   getDocs,
+  increment,
   limit,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
   startAfter,
-  Timestamp,
   Unsubscribe,
   updateDoc,
   where,
@@ -43,25 +42,50 @@ class MessageService {
 
       const docRef = await addDoc(this.messagesRef, messageData);
 
-      // Create message object with ID
+      // Create message object with ID and current timestamp
+      const currentTimestamp = new Date();
       const message: Message = {
         id: docRef.id,
         conversationId,
         senderId,
         text,
-        timestamp: serverTimestamp() as Timestamp,
+        timestamp: currentTimestamp as any, // Use current timestamp for immediate display
         readBy: {
-          [senderId]: serverTimestamp() as Timestamp,
+          [senderId]: currentTimestamp as any,
         },
-        createdAt: serverTimestamp() as Timestamp,
-        updatedAt: serverTimestamp() as Timestamp,
+        createdAt: currentTimestamp as any,
+        updatedAt: currentTimestamp as any,
       };
 
-      // Update conversation's last message
-      await conversationService.updateConversationLastMessage(
-        conversationId,
-        message
+      // Get conversation to access participants
+      const conversation = await conversationService.getConversation(
+        conversationId
       );
+      if (conversation) {
+        // Prepare update data for conversation
+        const updateData: any = {
+          lastMessage: {
+            id: message.id,
+            text: message.text,
+            senderId: message.senderId,
+            timestamp: message.timestamp,
+          },
+          updatedAt: serverTimestamp(),
+        };
+
+        // Increment unread count for each participant except sender
+        conversation.participants.forEach((participantId) => {
+          if (participantId !== senderId) {
+            updateData[`unreadCounts.${participantId}`] = increment(1);
+          }
+        });
+
+        // Update conversation with last message and unread counts
+        await conversationService.updateConversation(
+          conversationId,
+          updateData
+        );
+      }
 
       return message;
     } catch (error) {
@@ -129,16 +153,20 @@ class MessageService {
     userId: string
   ): Promise<void> {
     try {
-      // Get recent messages that haven't been read by this user
+      // Reset unread count atomically for this user
+      await conversationService.updateConversation(conversationId, {
+        [`unreadCounts.${userId}`]: 0,
+      });
+
+      // Still mark messages as read for read receipts
       const q = query(
         this.messagesRef,
         where("conversationId", "==", conversationId),
-        orderBy("timestamp", "desc"),
         limit(50)
       );
 
       const querySnapshot = await getDocs(q);
-      const batch = [];
+      const batch: Promise<void>[] = [];
 
       querySnapshot.forEach((doc) => {
         const message = doc.data() as Message;

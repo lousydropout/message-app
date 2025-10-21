@@ -25,7 +25,15 @@
 
 ### 1. Real-time Messaging Pattern
 
-**WebSocket + Firestore Hybrid**:
+**Firestore Real-time Listeners** (Current Implementation):
+
+- Firestore onSnapshot for instant message delivery (<200ms)
+- Firestore for persistence and offline sync
+- Optimistic updates for immediate UI feedback
+- Real-time typing indicators via Firestore subcollections
+- Read receipts tracking via Firestore document updates
+
+**Future WebSocket Enhancement**:
 
 - WebSocket for instant message delivery (<200ms)
 - Firestore for persistence and offline sync
@@ -36,11 +44,11 @@
 
 **Zustand Stores** for complex messaging state:
 
-- `authStore`: User authentication, Google login, and profiles
-- `messagesStore`: Real-time message management
-- `contactsStore`: Contact and friend management
-- `aiStore`: AI feature state and responses
-- `connectionStore`: WebSocket connection status
+- `authStore`: User authentication, email/password login, and profiles
+- `messagesStore`: Real-time message management with conversations and typing status
+- `contactsStore`: Contact and friend management with real-time status checking
+- `aiStore`: AI feature state and responses (future)
+- `connectionStore`: Network connection status (future)
 
 ### 3. Hybrid Storage Pattern
 
@@ -78,7 +86,40 @@ Offline Mode → Queue in SQLite → Reconnect → Sync from Firestore → Updat
 - **Read Receipts**: Track message read status per user
 - **Typing Indicators**: Real-time typing status updates
 
-### 7. AI Integration Pattern
+### 7. Android Text Rendering Pattern
+
+**Cross-platform Text Compatibility**:
+
+- FlashList for better Android layout engine
+- Android-specific text properties for proper rendering
+- Extra space buffer to prevent character cutoff
+- Platform-specific styling for consistent appearance
+
+```typescript
+// Pattern: Android text rendering fix
+messageText: {
+  fontSize: 16,
+  lineHeight: 22,
+  includeFontPadding: false,     // fixes vertical misalignment
+  textAlignVertical: "center",   // Android-only, stabilizes baseline
+  paddingBottom: 2,              // ensures descenders aren't clipped
+  marginBottom: -1,              // compensates for padding shift
+  ...(Platform.OS === "android" && {
+    textBreakStrategy: "simple",  // prevents mid-word breaks
+    flexShrink: 1,
+    flexGrow: 0,
+    flexBasis: "auto",
+    minWidth: 0,
+    numberOfLines: 0,
+    ellipsizeMode: "clip",
+  }),
+}
+
+// Pattern: Simple space fix for character cutoff
+<Text>{message.text + " "}</Text>
+```
+
+### 8. AI Integration Pattern
 
 **Function Calling + RAG Pipeline**:
 

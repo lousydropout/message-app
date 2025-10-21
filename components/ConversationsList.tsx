@@ -6,7 +6,7 @@ import { User } from "@/types/User";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Platform,
@@ -167,35 +167,11 @@ export function ConversationsList() {
       .slice(0, 2);
   }, []);
 
-  // Memoize unread counts calculation to avoid expensive operations on every render
-  const unreadCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-
-    if (!user) return counts;
-
-    conversations.forEach((conversation) => {
-      if (!conversation.lastMessage) {
-        counts[conversation.id] = 0;
-        return;
-      }
-
-      const conversationMessages = messages[conversation.id] || [];
-      const unreadMessages = conversationMessages.filter((message) => {
-        // Count messages that are not from current user and not read by current user
-        return message.senderId !== user.uid && !message.readBy[user.uid];
-      });
-
-      counts[conversation.id] = unreadMessages.length;
-    });
-
-    return counts;
-  }, [conversations, messages, user]);
-
   const getUnreadCount = useCallback(
     (conversation: Conversation): number => {
-      return unreadCounts[conversation.id] || 0;
+      return conversation.unreadCounts?.[user?.uid || ""] || 0;
     },
-    [unreadCounts]
+    [user]
   );
 
   const renderConversation = useCallback(
@@ -264,6 +240,7 @@ export function ConversationsList() {
       formatTime,
       getInitials,
       handleConversationPress,
+      participantProfiles,
     ]
   );
 

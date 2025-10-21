@@ -31,6 +31,7 @@ class ConversationService {
         name: name || null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        unreadCounts: {}, // Initialize empty
       };
 
       const docRef = await addDoc(this.conversationsRef, conversationData);
@@ -119,6 +120,16 @@ class ConversationService {
       return await this.createConversation([userId1, userId2], "direct");
     } catch (error) {
       console.error("Error getting or creating direct conversation:", error);
+      throw error;
+    }
+  }
+
+  async updateConversation(conversationId: string, data: any): Promise<void> {
+    try {
+      const conversationRef = doc(this.conversationsRef, conversationId);
+      await updateDoc(conversationRef, data);
+    } catch (error) {
+      console.error("Error updating conversation:", error);
       throw error;
     }
   }

@@ -56,11 +56,6 @@ export function ConversationView({
     // Subscribe to messages and typing status
     subscribeToMessages(conversationId);
 
-    // Mark conversation as read when opened
-    if (user) {
-      markAsRead(conversationId, user.uid);
-    }
-
     // Fetch other participant's profile for direct conversations
     if (conversation && conversation.type === "direct" && user) {
       const otherUserId = conversation.participants.find((p) => p !== user.uid);
@@ -79,6 +74,13 @@ export function ConversationView({
       }
     };
   }, [conversationId, user, conversation]);
+
+  // Separate effect: Mark as read after messages load
+  useEffect(() => {
+    if (user && conversationMessages.length > 0) {
+      markAsRead(conversationId, user.uid);
+    }
+  }, [conversationMessages.length, conversationId, user]);
 
   const handleSendMessage = async () => {
     if (!messageText.trim() || sendingMessage) return;

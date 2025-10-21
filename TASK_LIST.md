@@ -133,6 +133,13 @@ _Priority: Phase 1 - Foundation First_
   - Added message persistence and offline support through Firestore
   - **Acceptance**: Messages are delivered to all participants instantly ✅
 
+- [x] **1.4.5** Android Text Cutoff Fixes
+
+  - Migrated from FlatList to FlashList for better Android layout engine
+  - Applied comprehensive Android-specific text rendering properties
+  - Implemented simple space fix to prevent character cutoff
+  - **Acceptance**: Consistent text rendering across iOS and Android ✅
+
 ### Epic 1.5: Message Features & Status ✅ **COMPLETE**
 
 #### Tasks:
@@ -156,6 +163,20 @@ _Priority: Phase 1 - Foundation First_
   - Show message timestamps with proper formatting
   - Added conversation headers with participant names
   - **Acceptance**: Messages clearly show sender and timing ✅
+
+- [x] **1.5.4** Unread Message Indicators
+
+  - Added unread count calculation and display
+  - Implemented gold background highlighting for unread conversations
+  - Added unread count badges next to conversation names
+  - **Acceptance**: Users can easily identify conversations with unread messages ✅
+
+- [x] **1.5.5** Performance Optimizations
+
+  - Migrated all list components to FlashList for better performance
+  - Applied memoization with useCallback and useMemo
+  - Optimized FlatList props for smooth scrolling
+  - **Acceptance**: Smooth performance with large message lists ✅
 
 ### Epic 1.6: Offline Support & Persistence
 
@@ -187,6 +208,34 @@ _Priority: Phase 1 - Foundation First_
   - Automatically reconnect WebSocket
   - Sync missed messages from Firestore
   - **Acceptance**: App automatically syncs when connection restored
+
+---
+
+## 🐛 Critical Bug Fixes Completed
+
+### Android Text Cutoff Bug Resolution ✅ **COMPLETE**
+
+**Problem**: Persistent Android text cutoff in message bubbles where characters were being cut off ("Hi" → "H", "Apple" → "Appl")
+
+**Root Cause**: Android font metrics miscalculations where React Native's Yoga layout engine thinks text block is 19.5px tall but glyphs actually need 20px, resulting in the last pixel being cut off.
+
+**Solutions Applied**:
+
+- [x] **FlashList Migration**: Replaced FlatList with FlashList from @shopify/flash-list for better Android layout engine
+- [x] **Android Text Properties**: Applied comprehensive Android-specific text rendering properties
+- [x] **Layout Container Fixes**: Applied Android-specific container properties to prevent layout miscalculations
+- [x] **Simple Space Fix**: Added extra space at end of each message to prevent character cutoff
+- [x] **Cross-platform Compatibility**: Ensured consistent text rendering across iOS and Android
+
+**Files Modified**:
+- `components/MessageBubble.tsx` - Main text rendering component
+- `components/ConversationView.tsx` - Message list container
+- `components/ConversationsList.tsx` - Home screen conversation list
+- `components/UserSearch.tsx` - Search results list
+- `components/ContactsList.tsx` - Friends list
+- `package.json` - Added @shopify/flash-list dependency
+
+**Result**: Complete resolution of Android text cutoff issues with consistent cross-platform text rendering.
 
 ---
 
