@@ -122,6 +122,30 @@ class SQLiteService {
         CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status);
       `);
 
+      // Additional composite indexes for better performance
+      await this.db.execAsync(`
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation_id 
+          ON messages(conversationId, id);
+      `);
+      await this.db.execAsync(`
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation_updated 
+          ON messages(conversationId, updatedAt DESC);
+      `);
+      await this.db.execAsync(`
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation_status 
+          ON messages(conversationId, status);
+      `);
+      await this.db.execAsync(`
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation_sender 
+          ON messages(conversationId, senderId);
+      `);
+
+      // Triple composite index for optimal message queries
+      await this.db.execAsync(`
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation_id_updated 
+          ON messages(conversationId, id, updatedAt DESC);
+      `);
+
       // Create FTS5 virtual table for full-text search
       await this.db.execAsync(`
         CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
@@ -184,6 +208,16 @@ class SQLiteService {
       await this.db.execAsync(`
         CREATE INDEX IF NOT EXISTS idx_conversations_participants 
           ON conversations(participants);
+      `);
+
+      // Additional conversation indexes for better performance
+      await this.db.execAsync(`
+        CREATE INDEX IF NOT EXISTS idx_conversations_type 
+          ON conversations(type);
+      `);
+      await this.db.execAsync(`
+        CREATE INDEX IF NOT EXISTS idx_conversations_type_updated 
+          ON conversations(type, updatedAt DESC);
       `);
 
       // Create queued_messages table
@@ -326,6 +360,16 @@ class SQLiteService {
       await this.db.execAsync(`
         CREATE INDEX IF NOT EXISTS idx_queued_conversation 
           ON queued_messages(conversationId);
+      `);
+
+      // Additional queued messages indexes
+      await this.db.execAsync(`
+        CREATE INDEX IF NOT EXISTS idx_queued_conversation_timestamp 
+          ON queued_messages(conversationId, timestamp ASC);
+      `);
+      await this.db.execAsync(`
+        CREATE INDEX IF NOT EXISTS idx_queued_retry_count 
+          ON queued_messages(retryCount);
       `);
 
       // Create sync_metadata table
@@ -624,7 +668,7 @@ class SQLiteService {
   }
 
   /**
-   * Load recent messages for a conversation (for windowed Zustand)
+   * Load recent messages for a conversation (for windowed Zustand) - optimized
    */
   async loadRecentMessages(
     conversationId: string,
@@ -633,6 +677,11 @@ class SQLiteService {
     if (!this.db) throw new Error("Database not initialized");
 
     try {
+      console.log(
+        `[SQLite] Loading recent messages for conversation: ${conversationId}`
+      );
+      const startTime = Date.now();
+
       const rows = await this.db.getAllAsync<SQLiteMessage>(
         `SELECT * FROM messages 
          WHERE conversationId = ? 
@@ -641,7 +690,64 @@ class SQLiteService {
         [conversationId, limit]
       );
 
-      return rows.map((row) => this.sqliteToMessage(row));
+      console.log(
+        `[SQLite] Found ${rows.length} messages in ${Date.now() - startTime}ms`
+      );
+
+      // Optimize message conversion
+      const messages = rows.map((row) => {
+        try {
+          const readByParsed = JSON.parse(row.readBy);
+          const readBy = Object.fromEntries(
+            Object.entries(readByParsed).map(([k, v]) => [
+              k,
+              this.toFirestoreTimestamp(v as number),
+            ])
+          );
+
+          return {
+            id: row.id,
+            conversationId: row.conversationId,
+            senderId: row.senderId,
+            text: row.text,
+            timestamp: this.toFirestoreTimestamp(row.timestamp),
+            readBy,
+            status: row.status as any,
+            aiFeatures: row.aiFeatures ? JSON.parse(row.aiFeatures) : undefined,
+            createdAt: row.createdAt
+              ? this.toFirestoreTimestamp(row.createdAt)
+              : undefined,
+            updatedAt: row.updatedAt
+              ? this.toFirestoreTimestamp(row.updatedAt)
+              : undefined,
+          };
+        } catch (parseError) {
+          console.error(
+            `[SQLite] Error parsing message ${row.id}:`,
+            parseError
+          );
+          // Return a minimal message object to prevent crashes
+          return {
+            id: row.id,
+            conversationId: row.conversationId,
+            senderId: row.senderId,
+            text: row.text,
+            timestamp: this.toFirestoreTimestamp(row.timestamp),
+            readBy: {},
+            status: row.status as any,
+            aiFeatures: undefined,
+            createdAt: undefined,
+            updatedAt: undefined,
+          };
+        }
+      });
+
+      console.log(
+        `[SQLite] Parsed ${messages.length} messages in ${
+          Date.now() - startTime
+        }ms total`
+      );
+      return messages;
     } catch (error) {
       console.error("Error loading recent messages:", error);
       throw error;
@@ -705,20 +811,97 @@ class SQLiteService {
   }
 
   /**
-   * Get all conversations for a user
+   * Get all conversations for a user (optimized)
    */
   async getConversations(userId: string): Promise<Conversation[]> {
     if (!this.db) throw new Error("Database not initialized");
 
     try {
+      console.log(`[SQLite] Loading conversations for user: ${userId}`);
+      const startTime = Date.now();
+
+      // Use a more efficient query - get all conversations and filter in memory
+      // This is faster than LIKE queries on JSON strings
       const rows = await this.db.getAllAsync<SQLiteConversation>(
         `SELECT * FROM conversations 
-         WHERE participants LIKE ?
-         ORDER BY updatedAt DESC`,
-        [`%"${userId}"%`]
+         ORDER BY updatedAt DESC`
       );
 
-      return rows.map((row) => this.sqliteToConversation(row));
+      console.log(
+        `[SQLite] Found ${rows.length} total conversations in ${
+          Date.now() - startTime
+        }ms`
+      );
+
+      // Filter conversations that include the user (more efficient than LIKE)
+      const userConversations = rows.filter((row) => {
+        try {
+          const participants = JSON.parse(row.participants);
+          return Array.isArray(participants) && participants.includes(userId);
+        } catch (parseError) {
+          console.error(
+            `[SQLite] Error parsing participants for conversation ${row.id}:`,
+            parseError
+          );
+          return false;
+        }
+      });
+
+      console.log(
+        `[SQLite] Filtered to ${
+          userConversations.length
+        } user conversations in ${Date.now() - startTime}ms`
+      );
+
+      // Optimize JSON parsing by doing it in batch
+      const conversations = userConversations.map((row) => {
+        try {
+          return {
+            id: row.id,
+            type: row.type as "direct" | "group",
+            participants: JSON.parse(row.participants),
+            name: row.name || undefined,
+            createdAt: this.toFirestoreTimestamp(row.createdAt),
+            updatedAt: this.toFirestoreTimestamp(row.updatedAt),
+            lastMessage: row.lastMessageId
+              ? {
+                  id: row.lastMessageId,
+                  text: row.lastMessageText!,
+                  senderId: row.lastMessageSenderId!,
+                  timestamp: this.toFirestoreTimestamp(
+                    row.lastMessageTimestamp!
+                  ),
+                }
+              : undefined,
+            unreadCounts: row.unreadCounts
+              ? JSON.parse(row.unreadCounts)
+              : undefined,
+          };
+        } catch (parseError) {
+          console.error(
+            `[SQLite] Error parsing conversation ${row.id}:`,
+            parseError
+          );
+          // Return a minimal conversation object to prevent crashes
+          return {
+            id: row.id,
+            type: row.type as "direct" | "group",
+            participants: [userId], // Fallback
+            name: row.name || undefined,
+            createdAt: this.toFirestoreTimestamp(row.createdAt),
+            updatedAt: this.toFirestoreTimestamp(row.updatedAt),
+            lastMessage: undefined,
+            unreadCounts: undefined,
+          };
+        }
+      });
+
+      console.log(
+        `[SQLite] Parsed ${conversations.length} conversations in ${
+          Date.now() - startTime
+        }ms total`
+      );
+      return conversations;
     } catch (error) {
       console.error("Error getting conversations from SQLite:", error);
       throw error;
@@ -952,6 +1135,20 @@ class SQLiteService {
       };
     } catch (error) {
       console.error("Error getting stats:", error);
+      throw error;
+    }
+  }
+
+  async getIndexes(): Promise<string[]> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    try {
+      const indexes = await this.db.getAllAsync<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+      );
+      return indexes.map((row) => row.name);
+    } catch (error) {
+      console.error("Error getting indexes:", error);
       throw error;
     }
   }

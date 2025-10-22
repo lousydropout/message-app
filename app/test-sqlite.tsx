@@ -19,6 +19,7 @@ export default function TestSQLiteScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
+  const [indexes, setIndexes] = useState<string[]>([]);
 
   // Connection store state
   const {
@@ -191,6 +192,38 @@ export default function TestSQLiteScreen() {
     alert("Check console for helper function results!");
   };
 
+  // Test 9: Update Database Indexes
+  const testUpdateIndexes = async () => {
+    try {
+      console.log("🔄 Updating database indexes...");
+      
+      // Call the initialize method which will create all indexes
+      await sqliteService.initialize();
+      
+      console.log("✅ All indexes updated successfully!");
+      alert("Database indexes updated successfully!");
+      
+      // Refresh stats and indexes to show updated info
+      await testGetStats();
+      await testGetIndexes();
+    } catch (error) {
+      console.error("❌ Index update failed:", error);
+      alert("Index update failed: " + error.message);
+    }
+  };
+
+  // Test 10: Get Database Indexes
+  const testGetIndexes = async () => {
+    try {
+      const dbIndexes = await sqliteService.getIndexes();
+      setIndexes(dbIndexes);
+      console.log("✅ Indexes:", dbIndexes);
+    } catch (error) {
+      console.error("❌ Get indexes failed:", error);
+      alert("Get indexes failed: " + error.message);
+    }
+  };
+
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>SQLite Service Tests</Text>
@@ -302,6 +335,34 @@ export default function TestSQLiteScreen() {
           Check console for helper function results (should sync, is healthy,
           etc.)
         </Text>
+      </View>
+
+      {/* Test 9: Update Database Indexes */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>9. Update Database Indexes</Text>
+        <Button title="Update All Indexes" onPress={testUpdateIndexes} />
+        <Text style={styles.helpText}>
+          Creates/updates all performance indexes including the new composite indexes:
+          • Messages: (conversationId, id), (conversationId, updatedAt), (conversationId, id, updatedAt)
+          • Conversations: (type), (type, updatedAt)
+          • Queued Messages: (conversationId, timestamp), (retryCount)
+        </Text>
+      </View>
+
+      {/* Test 10: Show Database Indexes */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>10. Show Database Indexes</Text>
+        <Button title="Get Indexes" onPress={testGetIndexes} />
+        {indexes.length > 0 && (
+          <View>
+            <Text style={styles.resultsTitle}>Current Indexes ({indexes.length}):</Text>
+            {indexes.map((index, idx) => (
+              <Text key={idx} style={styles.resultItem}>
+                {index}
+              </Text>
+            ))}
+          </View>
+        )}
       </View>
     </ScrollView>
   );

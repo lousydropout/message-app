@@ -1,4 +1,5 @@
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useMessagesStore } from "@/stores/messagesStore";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
@@ -26,6 +27,8 @@ export default function NetworkStatusBar() {
     syncStats,
   } = useConnectionStore();
 
+  const { processQueue } = useMessagesStore();
+
   const getIndicatorColor = (): string => {
     if (!isOnline) return "#D32F2F"; // Red - disconnected
     if (isSyncing) return "#F57C00"; // Orange - syncing/reconnecting
@@ -34,7 +37,7 @@ export default function NetworkStatusBar() {
     return "#9E9E9E"; // Gray - idle
   };
 
-  const getIndicatorIcon = (): string => {
+  const getIndicatorIcon = (): keyof typeof Ionicons.glyphMap => {
     if (!isOnline) return "cloud-offline-outline";
     if (isSyncing) return "sync-outline";
     if (syncStatus === "error") return "warning-outline";
@@ -45,13 +48,7 @@ export default function NetworkStatusBar() {
   const handleRefresh = () => {
     try {
       if (isOnline && !isSyncing) {
-        import("@/stores/messagesStore")
-          .then((module) => {
-            module.useMessagesStore.getState().processQueue();
-          })
-          .catch((error) => {
-            console.error("Failed to import messagesStore:", error);
-          });
+        processQueue();
       }
     } catch (error) {
       console.error("Error triggering manual sync:", error);

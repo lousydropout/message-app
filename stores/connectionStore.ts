@@ -1,3 +1,4 @@
+import { useMessagesStore } from "@/stores/messagesStore";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { create } from "zustand";
 
@@ -137,18 +138,21 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         // Small delay to ensure connection is stable
         setTimeout(async () => {
           try {
-            const module = await import("@/stores/messagesStore");
-            const messagesStore = module.useMessagesStore.getState();
+            console.log("🔄 Starting automatic sync after reconnection...");
+            const messagesStore = useMessagesStore.getState();
 
             // First: Send queued messages
+            console.log("📤 Processing queued messages...");
             await messagesStore.processQueue();
 
             // Second: Fetch missed messages from Firestore
+            console.log("📥 Syncing missed messages...");
             await messagesStore.syncMissedMessages();
 
+            console.log("✅ Automatic sync completed successfully");
             set({ isSyncing: false, syncStatus: "synced" });
           } catch (error) {
-            console.error("Failed to trigger sync:", error);
+            console.error("❌ Failed to trigger sync:", error);
             // Reset sync status on error
             set({
               syncStatus: "error",
