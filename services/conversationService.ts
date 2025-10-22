@@ -165,24 +165,47 @@ class ConversationService {
       where("participants", "array-contains", userId)
     );
 
-    return onSnapshot(q, (querySnapshot) => {
-      const conversations: Conversation[] = [];
-      querySnapshot.forEach((doc) => {
-        conversations.push({
-          id: doc.id,
-          ...doc.data(),
-        } as Conversation);
-      });
+    return onSnapshot(
+      q,
+      (querySnapshot) => {
+        console.log(
+          `[DEBUG] Conversation subscription received ${querySnapshot.docs.length} documents`
+        );
 
-      // Sort on client side until index is ready
-      conversations.sort((a, b) => {
-        const aTime = a.updatedAt?.toDate?.() || new Date(0);
-        const bTime = b.updatedAt?.toDate?.() || new Date(0);
-        return bTime.getTime() - aTime.getTime();
-      });
+        const conversations: Conversation[] = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          console.log(`[DEBUG] Conversation ${doc.id}:`, {
+            type: data.type,
+            name: data.name,
+            participants: data.participants?.length,
+            unreadCounts: data.unreadCounts,
+            lastMessage: data.lastMessage?.text?.substring(0, 20) + "...",
+          });
 
-      callback(conversations);
-    });
+          conversations.push({
+            id: doc.id,
+            ...data,
+          } as Conversation);
+        });
+
+        // Sort on client side until index is ready
+        conversations.sort((a, b) => {
+          const aTime = a.updatedAt?.toDate?.() || new Date(0);
+          const bTime = b.updatedAt?.toDate?.() || new Date(0);
+          return bTime.getTime() - aTime.getTime();
+        });
+
+        console.log(
+          `[DEBUG] Calling callback with ${conversations.length} sorted conversations`
+        );
+        callback(conversations);
+      },
+      (error) => {
+        console.error(`[DEBUG] Conversation subscription error:`, error);
+        // Don't call callback on error, just log it
+      }
+    );
   }
 
   subscribeToConversation(

@@ -16,9 +16,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import CreateGroupModal from "./CreateGroupModal";
 
 export function ConversationsList() {
   const [refreshing, setRefreshing] = useState(false);
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [participantProfiles, setParticipantProfiles] = useState<
     Record<string, User>
   >({});
@@ -35,9 +37,16 @@ export function ConversationsList() {
 
   useEffect(() => {
     if (user) {
+      console.log(
+        `[DEBUG] User changed, loading conversations for: ${user.uid}`
+      );
       // Load conversations and subscribe to updates
       loadConversations(user.uid);
       subscribeToConversations(user.uid);
+    } else {
+      console.log(`[DEBUG] No user, clearing conversations`);
+      // Clear conversations when user logs out
+      // Note: The store will handle this automatically when user becomes null
     }
   }, [user]);
 
@@ -97,6 +106,10 @@ export function ConversationsList() {
     router.push("/contacts");
   }, []);
 
+  const handleCreateGroup = useCallback(() => {
+    setShowCreateGroupModal(true);
+  }, []);
+
   const formatTime = useCallback((timestamp: any) => {
     if (!timestamp) return "";
 
@@ -150,7 +163,7 @@ export function ConversationsList() {
       }
 
       if (conversation.type === "group") {
-        return `${conversation.participants.length} participants`;
+        return `${conversation.participants.length} members`;
       } else {
         return "No messages yet";
       }
@@ -169,7 +182,17 @@ export function ConversationsList() {
 
   const getUnreadCount = useCallback(
     (conversation: Conversation): number => {
-      return conversation.unreadCounts?.[user?.uid || ""] || 0;
+      const count = conversation.unreadCounts?.[user?.uid || ""] || 0;
+      console.log(
+        `[DEBUG] Unread count for ${conversation.id} (${conversation.type}):`,
+        {
+          count,
+          unreadCounts: conversation.unreadCounts,
+          userId: user?.uid,
+          conversationName: conversation.name || "Direct Chat",
+        }
+      );
+      return count;
     },
     [user]
   );
@@ -189,11 +212,13 @@ export function ConversationsList() {
         >
           <View style={styles.avatarContainer}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {item.type === "group"
-                  ? "G"
-                  : getInitials(getConversationTitle(item))}
-              </Text>
+              {item.type === "group" ? (
+                <Ionicons name="people" size={20} color="white" />
+              ) : (
+                <Text style={styles.avatarText}>
+                  {getInitials(getConversationTitle(item))}
+                </Text>
+              )}
             </View>
           </View>
 
@@ -294,6 +319,18 @@ export function ConversationsList() {
       <TouchableOpacity style={styles.fab} onPress={handleNewConversation}>
         <Ionicons name="add" size={24} color="white" />
       </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.fab, styles.groupFab]}
+        onPress={handleCreateGroup}
+      >
+        <Ionicons name="people" size={24} color="white" />
+      </TouchableOpacity>
+
+      <CreateGroupModal
+        visible={showCreateGroupModal}
+        onClose={() => setShowCreateGroupModal(false)}
+      />
     </View>
   );
 }
@@ -444,5 +481,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
+  },
+  groupFab: {
+    bottom: 80, // Position above the main FAB
+    backgroundColor: "#34C759", // Green color for group creation
   },
 });

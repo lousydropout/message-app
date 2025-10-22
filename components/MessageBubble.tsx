@@ -16,6 +16,7 @@ interface MessageBubbleProps {
   message: Message;
   sender?: User;
   showDisplayName?: boolean;
+  isGroupChat?: boolean;
   onLongPress?: (message: Message) => void;
   onRetry?: (message: Message) => void;
 }
@@ -27,6 +28,7 @@ export function MessageBubble({
   message,
   sender,
   showDisplayName = true,
+  isGroupChat = false,
   onLongPress,
   onRetry,
 }: MessageBubbleProps) {
@@ -112,8 +114,10 @@ export function MessageBubble({
             : styles.otherMessageContainer,
         ]}
       >
-        {!isOwnMessage && senderProfile && showDisplayName && (
-          <Text style={styles.senderName}>{senderProfile.displayName}</Text>
+        {showDisplayName && (
+          <Text style={styles.senderName}>
+            {isOwnMessage && isGroupChat ? "You" : senderProfile?.displayName || "Someone"}
+          </Text>
         )}
 
         <View

@@ -252,7 +252,8 @@ export function ConversationView({
         : null;
 
     const showDisplayName =
-      !previousMessage || previousMessage.senderId !== item.senderId;
+      conversation?.type === "group" || 
+      (!previousMessage || previousMessage.senderId !== item.senderId);
 
     // Check if this message should show the unread indicator
     const isFirstUnread = firstUnreadOriginalIndex === originalIndex;
@@ -263,6 +264,7 @@ export function ConversationView({
         <MessageBubble
           message={item}
           showDisplayName={showDisplayName}
+          isGroupChat={conversation?.type === "group"}
           onLongPress={handleMessageLongPress}
           onRetry={handleRetryMessage}
         />

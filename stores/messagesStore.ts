@@ -81,9 +81,21 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       subscriptions.conversations();
     }
 
+    console.log(`[DEBUG] Subscribing to conversations for user: ${userId}`);
+
     const unsubscribe = conversationService.subscribeToConversations(
       userId,
       (conversations) => {
+        console.log(
+          `[DEBUG] Received ${conversations.length} conversations:`,
+          conversations.map((c) => ({
+            id: c.id,
+            type: c.type,
+            name: c.name,
+            participants: c.participants.length,
+            unreadCounts: c.unreadCounts,
+          }))
+        );
         set({ conversations });
       }
     );
@@ -616,14 +628,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
                     ...state.messages,
                     [queued.conversationId]: currentMessages.map((msg) =>
                       msg.id === queued.messageId
-                        ? { ...message, status: "sent" }
+                        ? { ...message, status: "sent" as const }
                         : msg
                     ),
                   },
                 };
               } else {
                 // Temp message not in state, add real message in correct position
-                const newMessage = { ...message, status: "sent" };
+                const newMessage = { ...message, status: "sent" as const };
                 const updatedMessages = [...currentMessages];
 
                 // Find correct position based on timestamp

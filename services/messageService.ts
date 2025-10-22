@@ -93,8 +93,16 @@ class MessageService {
         conversation.participants.forEach((participantId) => {
           if (participantId !== senderId) {
             updateData[`unreadCounts.${participantId}`] = increment(1);
+            console.log(
+              `[DEBUG] Incrementing unread count for participant: ${participantId} in conversation: ${conversationId}`
+            );
           }
         });
+
+        console.log(
+          `[DEBUG] Updating conversation ${conversationId} with:`,
+          updateData
+        );
 
         // Update conversation with last message and unread counts
         await conversationService.updateConversation(
