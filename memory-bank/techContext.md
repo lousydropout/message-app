@@ -41,6 +41,17 @@
 - **Stores**: `authStore`, `messagesStore`, `aiStore`, `connectionStore`
 - **Offline Support**: SQLite for complex data + AsyncStorage for simple preferences
 
+### Logging System
+
+- **Library**: Custom Zustand-based logger store
+- **Console Integration**: Automatic console output for development
+- **SQLite Persistence**: Complete log history stored in SQLite
+- **In-Memory Cache**: Last 100 logs kept in memory for UI
+- **Level-Based Methods**: Uses appropriate console methods (debug/log/warn/error)
+- **Try-Catch Safety**: Console operations wrapped in try-catch
+- **Categories**: auth, network, messages, firebase, sqlite, connection, conversations, stores
+- **Levels**: debug, info, warning, error
+
 ### TypeScript
 
 - **Version**: 5.9.3
@@ -109,7 +120,8 @@ stores/
 ├── messagesStore.ts         # Real-time message management
 ├── contactsStore.ts         # Contact and friend management
 ├── aiStore.ts               # AI feature state and responses
-└── connectionStore.ts       # WebSocket connection status
+├── connectionStore.ts       # WebSocket connection status
+└── loggerStore.ts           # Comprehensive logging system
 
 services/
 ├── firebase.ts              # Firebase configuration
@@ -129,7 +141,8 @@ types/
 ├── User.ts                  # User interface
 ├── Friend.ts                # Friend interface
 ├── FriendRequest.ts         # Friend request interface
-└── AIResponse.ts            # AI response interface
+├── AIResponse.ts            # AI response interface
+└── Log.ts                   # Log type definitions
 ```
 
 ## Firebase Configuration

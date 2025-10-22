@@ -86,7 +86,46 @@ Offline Mode → Queue in SQLite → Reconnect → Sync from Firestore → Updat
 - **Read Receipts**: Track message read status per user
 - **Typing Indicators**: Real-time typing status updates
 
-### 7. Android Text Rendering Pattern
+### 9. Unified Logging Pattern
+
+**Console + SQLite + In-Memory Logging**:
+
+- **Console Output**: All logs automatically appear in console for development
+- **SQLite Persistence**: Complete log history stored in SQLite for diagnostics
+- **In-Memory Cache**: Last 100 logs kept in memory for quick access
+- **Level-Based Methods**: Uses appropriate console methods (debug/log/warn/error)
+- **Try-Catch Safety**: Console operations wrapped in try-catch to prevent app crashes
+
+```typescript
+// Pattern: Unified logging with console output
+logger.info("category", "message", metadata);
+logger.error("category", "error message", { error: errorMessage });
+logger.debug("category", "debug info", { data: someData });
+logger.warning("category", "warning message", { context: contextData });
+
+// Automatically outputs to:
+// 1. Console (for development)
+// 2. SQLite (for diagnostics)
+// 3. In-memory store (for UI)
+```
+
+**Log Categories**:
+- `auth`: Authentication events (sign-up, sign-in, logout)
+- `network`: Network state changes and connection monitoring
+- `messages`: Message processing and queue operations
+- `firebase`: Firebase connection state and operations
+- `sqlite`: Database operations and migrations
+- `connection`: Connection store operations
+- `conversations`: Conversation management
+- `stores`: Store initialization and cleanup
+
+**Log Levels**:
+- `debug`: Detailed debugging information
+- `info`: General information and status updates
+- `warning`: Warning conditions and recoverable errors
+- `error`: Error conditions and failures
+
+### 10. Android Text Rendering Pattern
 
 **Cross-platform Text Compatibility**:
 
