@@ -405,57 +405,93 @@ _Priority: Phase 2 - Technical Polish_
   - Add context augmentation for AI responses
   - **Acceptance**: AI has access to conversation context
 
-### Epic 3.2: Data Management & Sync 🚧 **PLANNING COMPLETE**
+### Epic 3.2: Data Management & Sync + Memory Optimization 🚧 **ENHANCED PLANNING COMPLETE**
+
+**Problem Statement**: Current messaging system has fundamental architectural issues:
+
+1. **Sync Problems**: `syncQueuedMessages()` doesn't work properly, dual-path complexity, no idempotency
+2. **Memory Issues**: 200 messages × N conversations in memory, unnecessary SQLite queries on reconnection
+3. **Performance Impact**: ~500ms+ of unnecessary database reads on reconnection
+
+**Solution**: Unified queue-first architecture with three-tier data flow:
+
+```
+Firestore (Authoritative Truth) → SQLite (Persistent Cache) → Zustand (Windowed Memory)
+```
 
 #### Tasks:
 
-- [ ] **3.2.1** Implement unified queue-first architecture
+- [ ] **3.2.1** Implement unified queue-first architecture (3 points)
 
   - Rename tempId to messageId throughout codebase
-  - Add UUID generation for all messages
-  - Implement single code path for online and offline
-  - **Acceptance**: All messages use unified queue-first flow
+  - Add UUID generation for all messages using uuid package
+  - Implement single code path for online and offline (eliminate dual paths)
+  - **Acceptance**: All messages use unified queue-first flow with UUIDs
 
-- [ ] **3.2.2** Add three-tier data architecture
+- [ ] **3.2.2** Add three-tier data architecture (3 points)
 
-  - SQLite caches ALL messages (persistent)
-  - Zustand holds windowed view (200 messages max per conversation)
+  - SQLite caches ALL messages (persistent storage)
+  - Zustand holds windowed view (100 messages max per conversation - reduced from 200)
   - Firestore remains authoritative truth
   - **Acceptance**: Clear separation of concerns between data layers
 
-- [ ] **3.2.3** Implement UUID-based idempotency
+- [ ] **3.2.3** Implement UUID-based idempotency (2 points)
 
   - Generate UUID upfront for all messages
   - Use same ID throughout message lifecycle
   - Add duplicate detection in subscription handler
   - **Acceptance**: Messages cannot be duplicated during sync
 
-- [ ] **3.2.4** Add incremental sync mechanism
+- [ ] **3.2.4** Add incremental sync mechanism (2 points)
 
   - Use lastSyncedAt to fetch only new messages
   - Add Firestore composite index (conversationId, updatedAt)
   - Implement getMessagesSince for efficient sync
   - **Acceptance**: Only new messages are fetched during sync
 
-- [ ] **3.2.5** Create unified queue processor
+- [ ] **3.2.5** Create unified queue processor (2 points)
 
   - Process queue with idempotency guarantees
   - Add mutex to prevent concurrent processing
   - Handle failed messages with retry count
   - **Acceptance**: Queue processes automatically when online
 
-- [ ] **3.2.6** Add conversation load/unload logic
+- [ ] **3.2.6** Implement conversation lifecycle management (2 points)
 
-  - Load recent 200 messages on conversation open
-  - Clear memory on conversation close
-  - Implement memory management for large conversations
-  - **Acceptance**: Memory usage stays bounded
+  - Load recent 100 messages on conversation open (reduced from 200)
+  - Clear memory on conversation close (unloadConversationMessages)
+  - Implement lazy loading for conversations
+  - **Acceptance**: Memory usage stays bounded with conversation lifecycle
 
-- [ ] **3.2.7** Test unified flow comprehensively
+- [ ] **3.2.7** Fix unnecessary SQLite queries on reconnection (1 point)
+
+  - Modify syncMissedMessages() to only add NEW messages to Zustand
+  - Remove redundant loadRecentMessages calls during sync
+  - Keep existing Zustand state, only append new messages
+  - **Acceptance**: No unnecessary SQLite queries on network reconnection
+
+- [ ] **3.2.8** Test unified flow comprehensively (1 point)
   - Test offline → online → sync flow
-  - Test message deduplication
+  - Test message deduplication with UUIDs
   - Test incremental sync performance
-  - **Acceptance**: All sync scenarios work correctly
+  - Test memory usage with 20+ conversations
+  - **Acceptance**: All sync scenarios work correctly with optimized memory usage
+
+**Key Changes from Original Epic 3.2**:
+
+1. **Memory Optimization Added**: Reduced MAX_MESSAGES_IN_MEMORY from 200 → 100, added conversation load/unload lifecycle, fixed unnecessary SQLite queries
+2. **Enhanced Testing**: Added memory usage testing with multiple conversations, performance validation for reconnection scenarios
+3. **Point Allocation**: Original Epic 3.2: 10 points + Memory optimization additions: 5 points = **Total Enhanced Epic 3.2: 15 points**
+
+**Files to Modify**:
+
+1. `package.json` - Add uuid dependency
+2. `types/Message.ts` - Add UUID documentation
+3. `firestore.indexes.json` - Add composite index (conversationId, updatedAt)
+4. `services/sqliteService.ts` - Rename tempId to messageId, add loadRecentMessages, sync metadata helpers
+5. `services/messageService.ts` - Add messageId param, idempotency, getMessagesSince
+6. `stores/messagesStore.ts` - Add MAX_MESSAGES_IN_MEMORY = 100, duplicate detection, unified flow, processQueue, syncMissedMessages, loadConversationMessages, unloadConversationMessages
+7. `stores/connectionStore.ts` - Call both processQueue and syncMissedMessages on reconnection with mutex
 
 ---
 
@@ -667,7 +703,7 @@ _Priority: Phase 3 - Final Deliverables_
 
 - **Core Messaging Infrastructure**: 35/35 points ✅ (Epic 1.1-1.7 Complete)
 - **Mobile App Quality**: 0/20 points
-- **Technical Implementation**: 3/10 points ✅ (Auth & Data Management Complete, Epic 3.2 Planning Complete)
+- **Technical Implementation**: 3/10 points ✅ (Auth & Data Management Complete, Epic 3.2 Enhanced Planning Complete)
 - **Documentation & Deployment**: 0/5 points
 - **AI Features Implementation**: 0/30 points
 - **Total Progress**: 38/100 points (38%)
@@ -679,15 +715,15 @@ _Priority: Phase 3 - Final Deliverables_
 ### Critical Path:
 
 1. ✅ Authentication (1.1) → Contact Management (1.2) → Messaging Core (1.4) → Message Features (1.5) → Offline Support (1.6) → Network Visibility (1.7) **COMPLETE**
-2. 🚧 Data Management & Sync (3.2) → Mobile Lifecycle (2.1) → Performance (2.2) **NEXT**
+2. 🚧 Data Management & Sync + Memory Optimization (3.2) → Mobile Lifecycle (2.1) → Performance (2.2) **NEXT**
 3. Foundation (Epics 1-2) → Technical Polish (Epics 3-4) → AI Features (Epics 5-6)
 
 ### Parallel Work:
 
-- Mobile Lifecycle (2.1) can be developed alongside Data Management & Sync (3.2)
-- Performance Optimization (2.2) can be done in parallel with Epic 3.2 implementation
+- Mobile Lifecycle (2.1) can be developed alongside Data Management & Sync + Memory Optimization (3.2)
+- Performance Optimization (2.2) can be done in parallel with Enhanced Epic 3.2 implementation
 - Documentation (4.1) can be written alongside Technical Implementation (3.1)
-- AI Features (5.1-5.3) can be developed in parallel after Epic 3.2 completion
+- AI Features (5.1-5.3) can be developed in parallel after Enhanced Epic 3.2 completion
 
 ---
 
