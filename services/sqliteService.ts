@@ -1,7 +1,7 @@
-import * as SQLite from "expo-sqlite";
-import { Timestamp } from "firebase/firestore";
 import { Conversation } from "@/types/Conversation";
 import { Message } from "@/types/Message";
+import * as SQLite from "expo-sqlite";
+import { Timestamp } from "firebase/firestore";
 
 // Helper types for SQLite representations
 interface SQLiteMessage {
@@ -35,7 +35,7 @@ interface SQLiteConversation {
 
 interface QueuedMessage {
   id?: number;
-  tempId: string;
+  messageId: string; // Actual message ID (UUID)
   conversationId: string;
   senderId: string;
   text: string;
@@ -190,7 +190,7 @@ class SQLiteService {
       await this.db.execAsync(`
         CREATE TABLE IF NOT EXISTS queued_messages (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          tempId TEXT UNIQUE NOT NULL,
+          messageId TEXT UNIQUE NOT NULL,
           conversationId TEXT NOT NULL,
           senderId TEXT NOT NULL,
           text TEXT NOT NULL,
@@ -202,6 +202,121 @@ class SQLiteService {
           FOREIGN KEY (conversationId) REFERENCES conversations(id)
         );
       `);
+
+      // Clear incompatible data and migrate schema
+      try {
+        // Check if tempId column exists
+        const tableInfo = await this.db.getAllAsync(
+          `PRAGMA table_info(queued_messages)`
+        );
+        const hasTempId = tableInfo.some((col: any) => col.name === "tempId");
+
+        if (hasTempId) {
+          console.log(
+            "Found tempId column, clearing incompatible data and migrating schema"
+          );
+
+          // Clear all queued messages (they have old tempId format incompatible with UUIDs)
+          await this.db.execAsync(`DELETE FROM queued_messages;`);
+          console.log("Cleared incompatible queued messages");
+
+          // Rename column
+          await this.db.execAsync(`
+            ALTER TABLE queued_messages RENAME COLUMN tempId TO messageId;
+          `);
+          console.log("Successfully renamed tempId to messageId");
+        } else {
+          console.log("No tempId column found, checking for incompatible data");
+
+          // Check if there are any queued messages with old tempId format
+          const queuedMessages = await this.db.getAllAsync(
+            `SELECT messageId FROM queued_messages WHERE messageId LIKE 'temp_%'`
+          );
+
+          if (queuedMessages.length > 0) {
+            console.log(
+              `Found ${queuedMessages.length} incompatible queued messages, clearing them`
+            );
+            await this.db.execAsync(
+              `DELETE FROM queued_messages WHERE messageId LIKE 'temp_%';`
+            );
+            console.log("Cleared incompatible queued messages");
+          } else {
+            console.log("No incompatible queued messages found");
+          }
+        }
+      } catch (error) {
+        // Fallback: create new table and copy compatible data only
+        console.log("Migration failed, using fallback approach");
+        try {
+          const tableInfo = await this.db.getAllAsync(
+            `PRAGMA table_info(queued_messages)`
+          );
+          const hasTempId = tableInfo.some((col: any) => col.name === "tempId");
+
+          if (hasTempId) {
+            console.log("Creating new table with compatible data only");
+            await this.db.execAsync(`
+              CREATE TABLE queued_messages_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                messageId TEXT UNIQUE NOT NULL,
+                conversationId TEXT NOT NULL,
+                senderId TEXT NOT NULL,
+                text TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                retryCount INTEGER DEFAULT 0,
+                lastRetryAt INTEGER,
+                error TEXT,
+                createdAt INTEGER NOT NULL,
+                FOREIGN KEY (conversationId) REFERENCES conversations(id)
+              );
+            `);
+
+            // Only copy messages that don't have tempId format (compatible with UUIDs)
+            await this.db.execAsync(`
+              INSERT INTO queued_messages_new 
+              SELECT id, tempId, conversationId, senderId, text, timestamp, retryCount, lastRetryAt, error, createdAt
+              FROM queued_messages
+              WHERE tempId NOT LIKE 'temp_%';
+            `);
+
+            await this.db.execAsync(`DROP TABLE queued_messages;`);
+            await this.db.execAsync(
+              `ALTER TABLE queued_messages_new RENAME TO queued_messages;`
+            );
+            console.log(
+              "Fallback migration completed (incompatible data cleared)"
+            );
+          } else {
+            console.log(
+              "No tempId column found, checking for incompatible data"
+            );
+
+            // Check if there are any queued messages with old tempId format
+            const queuedMessages = await this.db.getAllAsync(
+              `SELECT messageId FROM queued_messages WHERE messageId LIKE 'temp_%'`
+            );
+
+            if (queuedMessages.length > 0) {
+              console.log(
+                `Found ${queuedMessages.length} incompatible queued messages, clearing them`
+              );
+              await this.db.execAsync(
+                `DELETE FROM queued_messages WHERE messageId LIKE 'temp_%';`
+              );
+              console.log("Cleared incompatible queued messages");
+            }
+          }
+        } catch (fallbackError) {
+          console.log(
+            "Fallback migration also failed, clearing all queued messages:",
+            fallbackError
+          );
+          // Last resort: clear all queued messages
+          await this.db.execAsync(`DELETE FROM queued_messages;`);
+          console.log("Cleared all queued messages as last resort");
+        }
+      }
 
       // Create indexes for queued_messages
       await this.db.execAsync(`
@@ -275,9 +390,15 @@ class SQLiteService {
         )
       ),
       status: message.status || "sent",
-      aiFeatures: message.aiFeatures ? JSON.stringify(message.aiFeatures) : null,
-      createdAt: message.createdAt ? this.toSQLiteTimestamp(message.createdAt) : null,
-      updatedAt: message.updatedAt ? this.toSQLiteTimestamp(message.updatedAt) : null,
+      aiFeatures: message.aiFeatures
+        ? JSON.stringify(message.aiFeatures)
+        : null,
+      createdAt: message.createdAt
+        ? this.toSQLiteTimestamp(message.createdAt)
+        : null,
+      updatedAt: message.updatedAt
+        ? this.toSQLiteTimestamp(message.updatedAt)
+        : null,
       syncedAt: Date.now(),
     };
   }
@@ -303,8 +424,12 @@ class SQLiteService {
       readBy,
       status: row.status as any,
       aiFeatures: row.aiFeatures ? JSON.parse(row.aiFeatures) : undefined,
-      createdAt: row.createdAt ? this.toFirestoreTimestamp(row.createdAt) : undefined,
-      updatedAt: row.updatedAt ? this.toFirestoreTimestamp(row.updatedAt) : undefined,
+      createdAt: row.createdAt
+        ? this.toFirestoreTimestamp(row.createdAt)
+        : undefined,
+      updatedAt: row.updatedAt
+        ? this.toFirestoreTimestamp(row.updatedAt)
+        : undefined,
     };
   }
 
@@ -499,6 +624,31 @@ class SQLiteService {
   }
 
   /**
+   * Load recent messages for a conversation (for windowed Zustand)
+   */
+  async loadRecentMessages(
+    conversationId: string,
+    limit: number = 200
+  ): Promise<Message[]> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    try {
+      const rows = await this.db.getAllAsync<SQLiteMessage>(
+        `SELECT * FROM messages 
+         WHERE conversationId = ? 
+         ORDER BY timestamp DESC 
+         LIMIT ?`,
+        [conversationId, limit]
+      );
+
+      return rows.map((row) => this.sqliteToMessage(row));
+    } catch (error) {
+      console.error("Error loading recent messages:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Delete old messages (for cleanup)
    */
   async deleteOldMessages(olderThanTimestamp: number): Promise<number> {
@@ -602,7 +752,7 @@ class SQLiteService {
    * Add a message to the queue (when offline)
    */
   async queueMessage(
-    tempId: string,
+    messageId: string,
     conversationId: string,
     senderId: string,
     text: string
@@ -613,9 +763,9 @@ class SQLiteService {
       const now = Date.now();
       await this.db.runAsync(
         `INSERT INTO queued_messages 
-         (tempId, conversationId, senderId, text, timestamp, retryCount, createdAt)
+         (messageId, conversationId, senderId, text, timestamp, retryCount, createdAt)
          VALUES (?, ?, ?, ?, ?, 0, ?)`,
-        [tempId, conversationId, senderId, text, now, now]
+        [messageId, conversationId, senderId, text, now, now]
       );
     } catch (error) {
       console.error("Error queuing message:", error);
@@ -643,13 +793,14 @@ class SQLiteService {
   /**
    * Remove a message from the queue (after successful send)
    */
-  async removeQueuedMessage(tempId: string): Promise<void> {
+  async removeQueuedMessage(messageId: string): Promise<void> {
     if (!this.db) throw new Error("Database not initialized");
 
     try {
-      await this.db.runAsync(`DELETE FROM queued_messages WHERE tempId = ?`, [
-        tempId,
-      ]);
+      await this.db.runAsync(
+        `DELETE FROM queued_messages WHERE messageId = ?`,
+        [messageId]
+      );
     } catch (error) {
       console.error("Error removing queued message:", error);
       throw error;
@@ -660,7 +811,7 @@ class SQLiteService {
    * Update retry count for a queued message (after failed send)
    */
   async updateQueuedMessageRetry(
-    tempId: string,
+    messageId: string,
     error: string
   ): Promise<void> {
     if (!this.db) throw new Error("Database not initialized");
@@ -669,8 +820,8 @@ class SQLiteService {
       await this.db.runAsync(
         `UPDATE queued_messages 
          SET retryCount = retryCount + 1, lastRetryAt = ?, error = ?
-         WHERE tempId = ?`,
-        [Date.now(), error, tempId]
+         WHERE messageId = ?`,
+        [Date.now(), error, messageId]
       );
     } catch (error) {
       console.error("Error updating queued message retry:", error);
@@ -731,6 +882,24 @@ class SQLiteService {
       console.error("Error setting sync metadata:", error);
       throw error;
     }
+  }
+
+  /**
+   * Get lastSyncedAt for a conversation
+   */
+  async getLastSyncedAt(conversationId: string): Promise<number> {
+    const value = await this.getSyncMetadata(`lastSync_${conversationId}`);
+    return value || 0; // Return 0 if never synced
+  }
+
+  /**
+   * Set lastSyncedAt for a conversation
+   */
+  async setLastSyncedAt(
+    conversationId: string,
+    timestamp: number
+  ): Promise<void> {
+    await this.setSyncMetadata(`lastSync_${conversationId}`, timestamp);
   }
 
   // ============================================================================
@@ -797,4 +966,3 @@ class SQLiteService {
 
 // Export singleton instance
 export default new SQLiteService();
-

@@ -5,8 +5,15 @@ import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { Conversation } from "@/types/Conversation";
 import { Message } from "@/types/Message";
+import * as Crypto from "expo-crypto";
 import { Unsubscribe } from "firebase/firestore";
 import { create } from "zustand";
+
+// Constants
+const MAX_MESSAGES_IN_MEMORY = 200; // Window size per conversation
+
+// Mutex to prevent concurrent queue processing
+let queueProcessingMutex = false;
 
 export interface MessagesState {
   conversations: Conversation[];
@@ -36,7 +43,10 @@ export interface MessagesState {
     participantIds: string[],
     name: string
   ) => Promise<string>;
-  syncQueuedMessages: () => Promise<void>;
+  processQueue: () => Promise<void>;
+  syncMissedMessages: () => Promise<void>;
+  loadConversationMessages: (conversationId: string) => Promise<void>;
+  unloadConversationMessages: (conversationId: string) => void;
   clearSubscriptions: () => void;
 }
 
@@ -174,13 +184,61 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     // Subscribe to messages
     const messagesUnsubscribe = messageService.subscribeToMessages(
       conversationId,
-      (messages) => {
-        set((state) => ({
-          messages: {
-            ...state.messages,
-            [conversationId]: messages,
-          },
-        }));
+      async (messages) => {
+        // First: Save ALL messages to SQLite
+        for (const msg of messages) {
+          await sqliteService.saveMessage(msg);
+        }
+
+        // Second: Update Zustand window (only most recent 200)
+        set((state) => {
+          const currentMessages = state.messages[conversationId] || [];
+          const mergedMessages = [...currentMessages];
+
+          for (const newMsg of messages) {
+            const existingIndex = mergedMessages.findIndex(
+              (m) => m.id === newMsg.id
+            );
+
+            if (existingIndex >= 0) {
+              // Update existing message (replace in-place)
+              mergedMessages[existingIndex] = { ...newMsg, status: "sent" };
+            } else {
+              // New message - insert in correct chronological position
+              // Find the correct position based on timestamp
+              const insertIndex = mergedMessages.findIndex((msg) => {
+                const msgTime = msg.timestamp?.toDate?.() || new Date(0);
+                const newMsgTime = newMsg.timestamp?.toDate?.() || new Date(0);
+                return msgTime.getTime() < newMsgTime.getTime();
+              });
+
+              if (insertIndex === -1) {
+                // New message is older than all existing messages, add to end
+                mergedMessages.push(newMsg);
+              } else {
+                // Insert at the correct position
+                mergedMessages.splice(insertIndex, 0, newMsg);
+              }
+            }
+          }
+
+          // Sort all messages by timestamp to ensure correct order
+          mergedMessages.sort((a, b) => {
+            const aTime = a.timestamp?.toDate?.() || new Date(0);
+            const bTime = b.timestamp?.toDate?.() || new Date(0);
+            return bTime.getTime() - aTime.getTime(); // Newest first
+          });
+
+          // Trim to MAX_MESSAGES_IN_MEMORY
+          const trimmed = mergedMessages.slice(0, MAX_MESSAGES_IN_MEMORY);
+
+          return {
+            messages: {
+              ...state.messages,
+              [conversationId]: trimmed,
+            },
+          };
+        });
       }
     );
 
@@ -212,18 +270,28 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
     const { isOnline } = useConnectionStore.getState();
     set({ sendingMessage: true });
-    const tempId = `temp_${Date.now()}`;
+    const messageId = Crypto.randomUUID(); // Generate UUID for message
 
     try {
+      // Always queue first (unified flow)
+      if (sqliteService.isInitialized()) {
+        await sqliteService.queueMessage(
+          messageId,
+          conversationId,
+          user.uid,
+          text
+        );
+      }
+
       // Optimistic update - add message to local state immediately
       const tempMessage: Message = {
-        id: tempId,
+        id: messageId,
         conversationId,
         senderId: user.uid,
         text,
         timestamp: new Date() as any,
         readBy: { [user.uid]: new Date() as any },
-        status: isOnline ? "sending" : "sending", // Will be queued if offline
+        status: isOnline ? "sending" : "queued",
         createdAt: new Date() as any,
         updatedAt: new Date() as any,
       };
@@ -238,85 +306,41 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         },
       }));
 
-      // Check if online
-      if (!isOnline) {
-        console.log("📴 Offline: Queuing message");
-
-        // Queue message in SQLite
-        if (sqliteService.isInitialized()) {
-          await sqliteService.queueMessage(
-            tempId,
-            conversationId,
-            user.uid,
-            text
-          );
-
-          // Update connection store queue count
-          const queuedMessages = await sqliteService.getQueuedMessages();
-          useConnectionStore
-            .getState()
-            .updateQueueCounts(queuedMessages.length, 0);
-        }
-
-        // FIX: Update message status to "queued" in UI
-        set((state) => ({
-          messages: {
-            ...state.messages,
-            [conversationId]:
-              state.messages[conversationId]?.map((msg) =>
-                msg.id === tempId ? { ...msg, status: "queued" as const } : msg
-              ) || [],
-          },
-          sendingMessage: false,
-        }));
-
-        return; // Don't try to send to Firestore when offline
+      // If online: process queue immediately
+      if (isOnline) {
+        console.log("📡 Online: Processing queue immediately");
+        await get().processQueue();
+      } else {
+        console.log("📴 Offline: Message queued");
+        // Update connection store queue count
+        const queuedMessages = await sqliteService.getQueuedMessages();
+        useConnectionStore
+          .getState()
+          .updateQueueCounts(queuedMessages.length, 0);
       }
 
-      // Online: Send to Firestore
-      console.log("📡 Online: Sending message to Firestore");
-      const message = await messageService.sendMessage(
-        conversationId,
-        user.uid,
-        text
-      );
-
-      // Save to SQLite
-      if (sqliteService.isInitialized()) {
-        await sqliteService.saveMessage(message);
-      }
-
-      // Replace temp message with real message
-      set((state) => ({
-        messages: {
-          ...state.messages,
-          [conversationId]: state.messages[conversationId]?.map((msg) =>
-            msg.id === tempId ? { ...message, status: "sent" } : msg
-          ) || [{ ...message, status: "sent" }],
-        },
-        sendingMessage: false,
-      }));
+      set({ sendingMessage: false });
     } catch (error) {
       console.error("Error sending message:", error);
 
-      // Mark temp message as failed instead of removing
+      // Mark message as failed
       set((state) => ({
         messages: {
           ...state.messages,
           [conversationId]:
             state.messages[conversationId]?.map((msg) =>
-              msg.id === tempId ? { ...msg, status: "failed" } : msg
+              msg.id === messageId ? { ...msg, status: "failed" } : msg
             ) || [],
         },
         sendingMessage: false,
       }));
 
-      // If SQLite is initialized, update the queued message with error
+      // Update queued message with error
       if (sqliteService.isInitialized()) {
         try {
           const errorMessage =
             error instanceof Error ? error.message : String(error);
-          await sqliteService.updateQueuedMessageRetry(tempId, errorMessage);
+          await sqliteService.updateQueuedMessageRetry(messageId, errorMessage);
         } catch (sqliteError) {
           console.warn("Failed to update queued message retry:", sqliteError);
         }
@@ -352,6 +376,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     try {
       // Send the message again
       const message = await messageService.sendMessage(
+        messageId,
         conversationId,
         user.uid,
         failedMessage.text
@@ -473,26 +498,35 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
-  async syncQueuedMessages() {
+  async processQueue() {
+    // Prevent concurrent queue processing
+    if (queueProcessingMutex) {
+      console.log("🔄 Queue processing already in progress, skipping...");
+      return;
+    }
+
     const { user } = useAuthStore.getState();
     if (!user) {
-      console.warn("Cannot sync queued messages: User not authenticated");
+      console.warn("Cannot process queue: User not authenticated");
       return;
     }
 
     const { isOnline } = useConnectionStore.getState();
     if (!isOnline) {
-      console.log("📴 Cannot sync queued messages: Currently offline");
+      console.log("📴 Cannot process queue: Currently offline");
       return;
     }
 
     if (!sqliteService.isInitialized()) {
-      console.warn("Cannot sync queued messages: SQLite not initialized");
+      console.warn("Cannot process queue: SQLite not initialized");
       return;
     }
 
+    // Set mutex immediately
+    queueProcessingMutex = true;
+
     try {
-      console.log("🔄 Syncing queued messages...");
+      console.log("🔄 Processing message queue...");
       useConnectionStore.getState().setSyncing(true);
 
       const queuedMessages = await sqliteService.getQueuedMessages();
@@ -507,83 +541,160 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       let successCount = 0;
       let failedCount = 0;
 
-      for (const queued of queuedMessages) {
-        try {
-          console.log(`📤 Sending queued message: ${queued.tempId}`);
+      // Process messages in smaller batches to prevent memory issues
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < queuedMessages.length; i += BATCH_SIZE) {
+        const batch = queuedMessages.slice(i, i + BATCH_SIZE);
 
-          // Send to Firestore
-          const message = await messageService.sendMessage(
-            queued.conversationId,
-            queued.senderId,
-            queued.text
-          );
+        for (const queued of batch) {
+          try {
+            console.log(`📤 Sending queued message: ${queued.messageId}`);
 
-          // Save to messages table
-          await sqliteService.saveMessage(message);
+            // Check if conversation exists before sending message
+            const conversation = await conversationService.getConversation(
+              queued.conversationId
+            );
+            if (!conversation) {
+              console.warn(
+                `⚠️ Conversation ${queued.conversationId} not found, skipping message ${queued.messageId}`
+              );
 
-          // Remove from queue
-          await sqliteService.removeQueuedMessage(queued.tempId);
+              // Remove from queue since conversation doesn't exist
+              await sqliteService.removeQueuedMessage(queued.messageId);
 
-          // Update local state - replace temp message with real message
-          set((state) => {
-            const currentMessages = state.messages[queued.conversationId] || [];
-            const tempMessageExists = currentMessages.some(
-              (msg) => msg.id === queued.tempId
+              // Update local state to mark as failed
+              set((state) => {
+                const currentMessages =
+                  state.messages[queued.conversationId] || [];
+                return {
+                  messages: {
+                    ...state.messages,
+                    [queued.conversationId]: currentMessages.map((msg) =>
+                      msg.id === queued.messageId
+                        ? { ...msg, status: "failed" }
+                        : msg
+                    ),
+                  },
+                };
+              });
+
+              failedCount++;
+              continue;
+            }
+
+            console.log(
+              `✅ Conversation ${queued.conversationId} found, participants:`,
+              conversation.participants
             );
 
-            if (tempMessageExists) {
-              // Replace temp message with real message
-              return {
-                messages: {
-                  ...state.messages,
-                  [queued.conversationId]: currentMessages.map((msg) =>
-                    msg.id === queued.tempId
-                      ? { ...message, status: "sent" }
+            // Send to Firestore with UUID
+            const message = await messageService.sendMessage(
+              queued.messageId,
+              queued.conversationId,
+              queued.senderId,
+              queued.text
+            );
+
+            // Save to messages table
+            await sqliteService.saveMessage(message);
+
+            // Remove from queue
+            await sqliteService.removeQueuedMessage(queued.messageId);
+
+            // Update local state - replace temp message with real message
+            set((state) => {
+              const currentMessages =
+                state.messages[queued.conversationId] || [];
+              const tempMessageExists = currentMessages.some(
+                (msg) => msg.id === queued.messageId
+              );
+
+              if (tempMessageExists) {
+                // Replace temp message with real message
+                return {
+                  messages: {
+                    ...state.messages,
+                    [queued.conversationId]: currentMessages.map((msg) =>
+                      msg.id === queued.messageId
+                        ? { ...message, status: "sent" }
+                        : msg
+                    ),
+                  },
+                };
+              } else {
+                // Temp message not in state, add real message in correct position
+                const newMessage = { ...message, status: "sent" };
+                const updatedMessages = [...currentMessages];
+
+                // Find correct position based on timestamp
+                const insertIndex = updatedMessages.findIndex((msg) => {
+                  const msgTime = msg.timestamp?.toDate?.() || new Date(0);
+                  const newMsgTime =
+                    newMessage.timestamp?.toDate?.() || new Date(0);
+                  return msgTime.getTime() < newMsgTime.getTime();
+                });
+
+                if (insertIndex === -1) {
+                  // New message is older than all existing messages, add to end
+                  updatedMessages.push(newMessage);
+                } else {
+                  // Insert at the correct position
+                  updatedMessages.splice(insertIndex, 0, newMessage);
+                }
+
+                // Sort to ensure correct order
+                updatedMessages.sort((a, b) => {
+                  const aTime = a.timestamp?.toDate?.() || new Date(0);
+                  const bTime = b.timestamp?.toDate?.() || new Date(0);
+                  return bTime.getTime() - aTime.getTime(); // Newest first
+                });
+
+                return {
+                  messages: {
+                    ...state.messages,
+                    [queued.conversationId]: updatedMessages,
+                  },
+                };
+              }
+            });
+
+            successCount++;
+            console.log(
+              `✅ Queued message sent successfully: ${queued.messageId}`
+            );
+          } catch (error) {
+            console.error(
+              `❌ Failed to send queued message: ${queued.messageId}`,
+              error
+            );
+
+            // Update retry count
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            await sqliteService.updateQueuedMessageRetry(
+              queued.messageId,
+              errorMessage
+            );
+            failedCount++;
+
+            // Mark message as failed in local state
+            set((state) => ({
+              messages: {
+                ...state.messages,
+                [queued.conversationId]:
+                  state.messages[queued.conversationId]?.map((msg) =>
+                    msg.id === queued.messageId
+                      ? { ...msg, status: "failed" }
                       : msg
-                  ),
-                },
-              };
-            } else {
-              // Temp message not in state, add real message
-              return {
-                messages: {
-                  ...state.messages,
-                  [queued.conversationId]: [
-                    { ...message, status: "sent" },
-                    ...currentMessages,
-                  ],
-                },
-              };
-            }
-          });
+                  ) || [],
+              },
+            }));
+          }
+        }
 
-          successCount++;
-          console.log(`✅ Queued message sent successfully: ${queued.tempId}`);
-        } catch (error) {
-          console.error(
-            `❌ Failed to send queued message: ${queued.tempId}`,
-            error
-          );
-
-          // Update retry count
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          await sqliteService.updateQueuedMessageRetry(
-            queued.tempId,
-            errorMessage
-          );
-          failedCount++;
-
-          // Mark message as failed in local state
-          set((state) => ({
-            messages: {
-              ...state.messages,
-              [queued.conversationId]:
-                state.messages[queued.conversationId]?.map((msg) =>
-                  msg.id === queued.tempId ? { ...msg, status: "failed" } : msg
-                ) || [],
-            },
-          }));
+        // Small delay between batches to prevent overwhelming the system
+        if (i + BATCH_SIZE < queuedMessages.length) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
 
@@ -599,21 +710,82 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       });
 
       console.log(
-        `✅ Sync complete: ${successCount} sent, ${failedCount} failed`
+        `✅ Queue processing complete: ${successCount} sent, ${failedCount} failed`
       );
       useConnectionStore.getState().setSyncing(false);
       useConnectionStore
         .getState()
         .setSyncStatus(failedCount > 0 ? "error" : "synced");
-      // Add this line to update lastSyncAt:
-      useConnectionStore.getState().updateSyncStats({ lastSyncAt: Date.now() });
     } catch (error) {
-      console.error("Error syncing queued messages:", error);
+      console.error("Error processing queue:", error);
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       useConnectionStore.getState().setSyncing(false);
-      useConnectionStore.getState().setError(`Sync failed: ${errorMessage}`);
+      useConnectionStore
+        .getState()
+        .setError(`Queue processing failed: ${errorMessage}`);
+    } finally {
+      // Always clear the mutex
+      queueProcessingMutex = false;
     }
+  },
+
+  async syncMissedMessages() {
+    const { conversations } = get();
+
+    for (const conv of Object.values(conversations)) {
+      const lastSyncedAt = await sqliteService.getLastSyncedAt(conv.id);
+      const newMessages = await messageService.getMessagesSince(
+        conv.id,
+        lastSyncedAt
+      );
+
+      // Save ALL to SQLite
+      for (const msg of newMessages) {
+        await sqliteService.saveMessage(msg);
+      }
+
+      // Load most recent 200 into Zustand
+      const recentMessages = await sqliteService.loadRecentMessages(
+        conv.id,
+        MAX_MESSAGES_IN_MEMORY
+      );
+      set((state) => ({
+        messages: {
+          ...state.messages,
+          [conv.id]: recentMessages,
+        },
+      }));
+
+      // Update sync timestamp to max updatedAt from batch
+      if (newMessages.length > 0) {
+        const maxUpdatedAt = Math.max(
+          ...newMessages.map((m) => m.updatedAt?.toMillis() || 0)
+        );
+        await sqliteService.setLastSyncedAt(conv.id, maxUpdatedAt);
+      }
+    }
+  },
+
+  async loadConversationMessages(conversationId: string) {
+    const messages = await sqliteService.loadRecentMessages(
+      conversationId,
+      MAX_MESSAGES_IN_MEMORY
+    );
+
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [conversationId]: messages,
+      },
+    }));
+  },
+
+  unloadConversationMessages(conversationId: string) {
+    set((state) => {
+      const { [conversationId]: removed, ...rest } = state.messages;
+      return { messages: rest };
+    });
   },
 
   clearSubscriptions() {

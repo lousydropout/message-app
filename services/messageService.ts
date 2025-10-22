@@ -1,14 +1,15 @@
 import { db } from "@/config/firebase";
 import { Message, TypingStatus } from "@/types/Message";
 import {
-  addDoc,
   collection,
   doc,
   DocumentSnapshot,
+  getDoc,
   getDocs,
   increment,
   limit,
   onSnapshot,
+  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -23,11 +24,21 @@ class MessageService {
   private messagesRef = collection(db, "messages");
 
   async sendMessage(
+    messageId: string,
     conversationId: string,
     senderId: string,
     text: string
   ): Promise<Message> {
     try {
+      const messageRef = doc(this.messagesRef, messageId);
+
+      // Idempotency check
+      const existing = await getDoc(messageRef);
+      if (existing.exists()) {
+        console.log("Message already exists, skipping:", messageId);
+        return { id: messageId, ...existing.data() } as Message;
+      }
+
       const messageData = {
         conversationId,
         senderId,
@@ -40,12 +51,17 @@ class MessageService {
         updatedAt: serverTimestamp(),
       };
 
-      const docRef = await addDoc(this.messagesRef, messageData);
+      // Use setDoc with provided UUID (not addDoc)
+      console.log(
+        `📤 Attempting to send message ${messageId} to conversation ${conversationId}`
+      );
+      await setDoc(messageRef, messageData);
+      console.log(`✅ Message ${messageId} sent successfully to Firestore`);
 
       // Create message object with ID and current timestamp
       const currentTimestamp = new Date();
       const message: Message = {
-        id: docRef.id,
+        id: messageId,
         conversationId,
         senderId,
         text,
@@ -217,6 +233,29 @@ class MessageService {
 
       callback(messages);
     });
+  }
+
+  async getMessagesSince(
+    conversationId: string,
+    sinceTimestamp: number
+  ): Promise<Message[]> {
+    try {
+      const q = query(
+        this.messagesRef,
+        where("conversationId", "==", conversationId),
+        where("updatedAt", ">=", new Date(sinceTimestamp)),
+        orderBy("updatedAt", "asc"),
+        limit(100)
+      );
+
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(
+        (doc) => ({ id: doc.id, ...doc.data() } as Message)
+      );
+    } catch (error) {
+      console.error("Error getting messages since timestamp:", error);
+      throw error;
+    }
   }
 
   async updateTypingStatus(

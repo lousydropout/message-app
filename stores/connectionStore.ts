@@ -113,33 +113,53 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
     // Subscribe to isOnline changes for automatic sync
     let previousIsOnline = get().isOnline;
+    let syncInProgress = false; // Local mutex to prevent race conditions
+
     const unsubscribeSync = useConnectionStore.subscribe((state) => {
       const isOnline = state.isOnline;
       const isSyncing = state.isSyncing;
 
       // Only trigger sync when going from offline to online AND not already syncing
-      if (isOnline && previousIsOnline === false && !isSyncing) {
+      if (
+        isOnline &&
+        previousIsOnline === false &&
+        !isSyncing &&
+        !syncInProgress
+      ) {
         console.log("🔄 Network restored - triggering sync via subscription");
+
+        // Set local mutex immediately to prevent race conditions
+        syncInProgress = true;
 
         // Update sync status to indicate we're about to sync
         set({ syncStatus: "syncing", isSyncing: true });
 
         // Small delay to ensure connection is stable
-        setTimeout(() => {
-          import("@/stores/messagesStore")
-            .then((module) => {
-              module.useMessagesStore.getState().syncQueuedMessages();
-            })
-            .catch((error) => {
-              console.error("Failed to trigger sync:", error);
-              // Reset sync status on error
-              set({
-                syncStatus: "error",
-                isSyncing: false,
-                lastError: error.message,
-              });
+        setTimeout(async () => {
+          try {
+            const module = await import("@/stores/messagesStore");
+            const messagesStore = module.useMessagesStore.getState();
+
+            // First: Send queued messages
+            await messagesStore.processQueue();
+
+            // Second: Fetch missed messages from Firestore
+            await messagesStore.syncMissedMessages();
+
+            set({ isSyncing: false, syncStatus: "synced" });
+          } catch (error) {
+            console.error("Failed to trigger sync:", error);
+            // Reset sync status on error
+            set({
+              syncStatus: "error",
+              isSyncing: false,
+              lastError: error instanceof Error ? error.message : String(error),
             });
-        }, 500);
+          } finally {
+            // Always clear the mutex
+            syncInProgress = false;
+          }
+        }, 1000); // Increased delay to 1 second for stability
       }
       previousIsOnline = isOnline;
     });

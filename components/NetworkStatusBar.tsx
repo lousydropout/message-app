@@ -47,7 +47,7 @@ export default function NetworkStatusBar() {
       if (isOnline && !isSyncing) {
         import("@/stores/messagesStore")
           .then((module) => {
-            module.useMessagesStore.getState().syncQueuedMessages();
+            module.useMessagesStore.getState().processQueue();
           })
           .catch((error) => {
             console.error("Failed to import messagesStore:", error);

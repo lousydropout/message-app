@@ -1,8 +1,8 @@
-# Active Context: MessageAI Project - Epic 1.4 & 1.5 Complete + Android Fixes
+# Active Context: MessageAI Project - Epic 3.2 Data Sync Planning Complete
 
 ## Current Status
 
-**EPIC 1.4 & 1.5 COMPLETE**: Real-time Messaging Core and Message Features & Status successfully implemented with comprehensive Android text cutoff fixes. All major messaging functionality working with professional UI/UX. Ready to proceed with Epic 1.6: Offline Support & Persistence.
+**EPIC 3.2 PLANNING COMPLETE**: Comprehensive data management and sync architecture designed with unified queue-first approach, UUID-based idempotency, and three-tier data flow. Ready to implement Epic 3.2: Data Management & Sync to fix offline queue issues and establish robust message synchronization.
 
 ## Recent Major Accomplishment
 
@@ -54,146 +54,186 @@
 - ✅ **Simple Space Fix**: Added extra space at end of messages to prevent character cutoff
 - ✅ **Cross-platform Compatibility**: Consistent text rendering across iOS and Android
 
-**Epic 1.3: Profile Management & Navigation (2 points)** ✅ **COMPLETE**
+**Epic 1.6: Offline Support & Persistence (12 points)** 🚧 **PARTIAL**
 
-### What Was Implemented
+### Offline Infrastructure ✅ **COMPLETE**
 
-- ✅ **Profile Tab**: Replaced Explore tab with dedicated Profile tab (👤 icon)
-- ✅ **Profile Screen**: Complete user profile overview with avatar, settings display, and action buttons
-- ✅ **Logout Functionality**: Proper logout button with confirmation dialog in Profile tab
-- ✅ **Navigation Fix**: Fixed profile edit navigation using Link component instead of programmatic navigation
-- ✅ **Auth Guard Updates**: Modified auth logic to allow navigation to profile/edit while maintaining security
+- ✅ **SQLite Database**: Local message storage with full-text search capability
+- ✅ **AsyncStorage Integration**: User preferences and session data persistence
+- ✅ **Message Queuing**: Offline message queuing implemented
+- ❌ **Auto-sync**: `syncQueuedMessages()` function exists but doesn't work properly
+- ❌ **Conflict Resolution**: Not implemented
 
-### Search & Friend Request Improvements ✅ **COMPLETE**
+**Epic 1.7: Network Connectivity Visibility (8 points)** ✅ **COMPLETE**
 
-- ✅ **Real-time Friend Status**: Database-driven friend status checking for search results
-- ✅ **UI Status Updates**: Accurate button states (Add Friend/Request Sent/Friends/Blocked)
-- ✅ **Declined Request Handling**: Allow new friend requests after previous ones were declined
-- ✅ **Error Prevention**: No more "Friend request already exists" errors for declined requests
-- ✅ **Firestore Permissions**: Fixed composite index issues with simplified queries
-- ✅ **Sender Information Display**: Fixed friend request cards to show actual sender names and emails
-- ✅ **Friends List Updates**: Fixed friends list to refresh when accepting friend requests
-- ✅ **Bidirectional Request Detection**: Fixed getFriendRequest to search both directions
+### Network Status Indicator ✅ **COMPLETE**
 
-### Key Technical Decisions Made
+- ✅ **Discreet Indicator**: Small colored dot (green/gray/yellow/red) in top-right corner
+- ✅ **Status States**: Connected/idle/reconnecting/disconnected visual feedback
+- ✅ **Non-intrusive Design**: Doesn't block navigation or interfere with UI
+- ✅ **Real-time Updates**: Instant status changes based on network conditions
 
-1. **Profile Tab Placement**: Moved logout functionality from Contacts to Profile tab for better UX
-2. **Navigation Method**: Used Link component for reliable modal navigation in Expo Router
-3. **Auth Guard Logic**: Allow profile/edit navigation while blocking other profile routes
-4. **Friend Request Logic**: Treat declined requests as strangers to allow new requests
-5. **Database Queries**: Simplified Firestore queries to avoid composite index requirements
-6. **Sender Profile Fetching**: Added automatic fetching of sender profiles for friend request cards
-7. **Bidirectional Search**: Fixed getFriendRequest to search both directions for existing requests
+### Detailed Information Modal ✅ **COMPLETE**
+
+- ✅ **Comprehensive Status**: Connection type, sync status, message queue info
+- ✅ **Sync Statistics**: Queued message count, sync history, retry counts
+- ✅ **Last Sync Timestamp**: Proper formatting (2m ago, 15s ago, 3h ago)
+- ✅ **Error Information**: Last error display with detailed context
+
+### Manual Controls ✅ **COMPLETE**
+
+- ✅ **Refresh Button**: Force sync/reconnect functionality
+- ✅ **Dual Access**: Available next to indicator and inside modal
+- ✅ **Smart Disabling**: Disabled when offline or already syncing
+- ✅ **User Control**: Manual sync trigger for troubleshooting
+
+### Auto-Sync Intelligence ✅ **COMPLETE**
+
+- ✅ **Network Reconnect Detection**: Automatic sync when going from offline to online
+- ✅ **Status Tracking**: Proper state transitions (idle → syncing → synced/error)
+- ✅ **Infinite Recursion Prevention**: Guard conditions to prevent subscription loops
+- ✅ **Error Handling**: Graceful error recovery with status updates
 
 ## Current Work Focus
 
-**Epic 1.6: Offline Support & Persistence (12 points)**
+**Epic 3.2: Data Management & Sync (10 points)** 🚧 **PLANNING COMPLETE**
 
-### Next Implementation Tasks
+### Strategic Architecture Decision
 
-1. **Message Queuing**: SQLite for message history + AsyncStorage for simple queuing
-2. **Auto-reconnection**: Automatic sync when network restored
-3. **Conflict Resolution**: Handle concurrent message edits
-4. **Connection Status**: Clear UI indicators for network state
-5. **Push Notifications**: Receive notifications for new messages
-6. **Message History**: SQLite-based conversation history with full-text search
-7. **Sync Performance**: <1 second sync time after reconnection
+**Problem Identified**: Current offline sync has fundamental issues:
 
-### Technical Architecture Ready
+- `syncQueuedMessages()` doesn't properly send queued messages to Firestore
+- Complex dual-path logic (online vs offline) creates maintenance burden
+- No idempotency - messages can be duplicated during sync
+- Missing incremental sync for missed messages
 
-- ✅ **Authentication**: Users can sign up/sign in and manage profiles
-- ✅ **User Profiles**: Complete user data structure with language preferences
-- ✅ **Contact Management**: Users can find, add, and manage friends
-- ✅ **Profile Management**: Users can view/edit profiles and logout properly
-- ✅ **Real-time Messaging**: Complete messaging infrastructure with Firestore
-- ✅ **Message Components**: Professional UI components for chat interface
-- ✅ **Typing Indicators**: Real-time typing status with user profiles
-- ✅ **Read Receipts**: Message read status tracking
-- ✅ **Unread Indicators**: Visual indicators with count badges
-- ✅ **Cross-platform Compatibility**: Works consistently on iOS and Android
-- ✅ **Android Text Fixes**: Resolved persistent text cutoff issues
-- ✅ **Performance Optimization**: FlashList migration and memoized components
+**Solution Designed**: Unified queue-first architecture with three-tier data flow:
+
+```
+Firestore (Authoritative Truth - Expensive)
+    ↓ (Real-time subscription + Incremental sync)
+SQLite (Persistent Cache - ALL messages)
+    ↓ (Load most recent 200 on conversation open)
+Zustand (In-Memory Window - Last 200 messages)
+```
+
+### Key Architectural Decisions Made
+
+1. **Unified Queue-First Flow**: ALL messages go through queue regardless of online/offline status
+2. **UUID-Based Idempotency**: Same UUID throughout message lifecycle prevents duplicates
+3. **Three-Tier Architecture**: Clear separation of concerns between Firestore, SQLite, and Zustand
+4. **Windowed Zustand**: Last 200 messages per conversation to prevent memory bloat
+5. **Incremental Sync**: Use lastSyncedAt to fetch only new messages efficiently
+6. **Rename tempId → messageId**: Improve code clarity (it was never temporary)
+
+### Implementation Plan Ready
+
+**11-Step Implementation Plan**:
+
+1. Rename tempId to messageId (schema migration + code updates)
+2. Add UUID generation (replace timestamp-based IDs)
+3. Implement unified queue-first flow (eliminate dual paths)
+4. Add SQLite message cache operations (loadRecentMessages)
+5. Add duplicate detection in subscription handler (UUID-based dedup)
+6. Add incremental sync mechanism (getMessagesSince + Firestore index)
+7. Create unified queue processor (processQueue with idempotency)
+8. Add conversation load/unload logic (memory management)
+9. Update queue processor calls (pass UUIDs, add mutex)
+10. Test unified flow (comprehensive testing checklist)
+11. Defer privacy & rate limiting (for AI features later)
+
+### Technical Implementation Ready
+
+- ✅ **Architecture**: Three-tier data flow designed
+- ✅ **UUID Strategy**: Idempotent message handling planned
+- ✅ **SQLite Schema**: Migration strategy defined
+- ✅ **Firestore Index**: Composite index on (conversationId, updatedAt) planned
+- ✅ **Memory Management**: Windowed Zustand with 200-message limit
+- ✅ **Sync Strategy**: Real-time subscriptions + incremental sync
+- ✅ **Error Handling**: Retry logic and conflict resolution planned
+- ✅ **Testing Strategy**: Comprehensive test cases defined
 
 ## Active Decisions
 
-### 1. Authentication Strategy ✅ COMPLETE
+### 1. Queue-First Architecture ✅ DECIDED
 
-- **Decision**: Email/password authentication (simplified from Google OAuth)
-- **Reason**: More reliable, easier to implement, works consistently across platforms
-- **Result**: Clean authentication flow with proper error handling
+- **Decision**: All messages queue first, process immediately if online
+- **Reason**: Eliminates dual-path complexity, provides consistent behavior
+- **Result**: Single code path, easier maintenance, natural retry mechanism
 
-### 2. Profile Management Strategy ✅ COMPLETE
+### 2. UUID-Based Idempotency ✅ DECIDED
 
-- **Decision**: Auto-create profiles during sign-up
-- **Reason**: Better UX - users can start using app immediately
-- **Implementation**: Profile editing available later from settings
+- **Decision**: Generate UUID upfront, use same ID throughout lifecycle
+- **Reason**: Prevents duplicate messages, enables natural deduplication
+- **Implementation**: Replace tempId timestamp generation with uuidv4()
 
-### 3. Contact Management Strategy ✅ COMPLETE
+### 3. Three-Tier Data Architecture ✅ DECIDED
 
-- **Decision**: Firestore for friend requests with separate collection
-- **Reason**: Real-time sync, offline support, scalable
-- **Implementation**: Friend requests collection with proper access control
+- **Decision**: Firestore → SQLite → Zustand hierarchy
+- **Reason**: Each layer has distinct purpose (authority, persistence, performance)
+- **Implementation**: SQLite caches ALL messages, Zustand holds windowed view
 
-### 4. Search Implementation ✅ COMPLETE
+### 4. Windowed Memory Management ✅ DECIDED
 
-- **Decision**: Firestore range queries with client-side sorting
-- **Reason**: Avoid composite index requirements, simpler deployment
-- **Implementation**: Range queries on email/displayName with client-side deduplication
+- **Decision**: Zustand holds last 200 messages per conversation
+- **Reason**: Prevents memory bloat while maintaining fast UI performance
+- **Implementation**: Load on conversation open, clear on close
 
-### 5. Friend Request Logic ✅ COMPLETE
+### 5. Incremental Sync Strategy ✅ DECIDED
 
-- **Decision**: Allow new requests after declined ones
-- **Reason**: Handle accidental declines gracefully
-- **Implementation**: Delete declined requests and treat as strangers
+- **Decision**: Use lastSyncedAt per conversation for efficient sync
+- **Reason**: Only fetch new messages, avoid redundant Firestore queries
+- **Implementation**: Firestore composite index + pagination support
 
-### 6. UI/UX Improvements ✅ COMPLETE
+### 6. Schema Migration Strategy ✅ DECIDED
 
-- **Decision**: Real-time friend status checking for search results
-- **Reason**: Prevent duplicate requests and show accurate status
-- **Implementation**: Database-driven status checking with local state updates
+- **Decision**: Rename tempId to messageId with fallback for old SQLite
+- **Reason**: Improves code clarity, tempId was misleading name
+- **Implementation**: ALTER TABLE RENAME COLUMN with fallback to table recreation
 
 ## Current Challenges
 
-### 1. WebSocket Implementation
+### 1. Implementation Complexity
 
-- **Challenge**: Setting up reliable WebSocket connections for real-time messaging
-- **Approach**: Native WebSocket API with reconnection logic
-- **Fallback**: Firestore real-time listeners as backup
+- **Challenge**: 11-step implementation plan with multiple interdependent changes
+- **Approach**: Sequential implementation with comprehensive testing at each step
+- **Risk Mitigation**: Clear rollback strategy, incremental validation
 
-### 2. Message Delivery Pipeline
+### 2. Data Migration
 
-- **Challenge**: Ensuring messages are delivered reliably and quickly
-- **Approach**: WebSocket for speed, Firestore for persistence
-- **Implementation**: Optimistic updates with server confirmation
+- **Challenge**: Existing queued messages use old "temp_XXX" format
+- **Approach**: Clear existing queued messages before implementation
+- **Risk Mitigation**: Test data only, no production impact
 
-### 3. Performance Optimization
+### 3. Firestore Index Deployment
 
-- **Challenge**: Handle 20+ rapid messages without lag
-- **Approach**: Efficient message rendering and state management
-- **Target**: <200ms message delivery, smooth UI updates
+- **Challenge**: Composite index required for incremental sync queries
+- **Approach**: Add to firestore.indexes.json and deploy
+- **Risk Mitigation**: Auto-creation fallback available
 
 ## Next Steps
 
-### Immediate (Epic 1.4)
+### Immediate (Epic 3.2 Implementation)
 
-1. **WebSocket Service**: Implement basic WebSocket connection management
-2. **Message Components**: Create MessageBubble and ConversationView components
-3. **Message Broadcasting**: Real-time message distribution system
-4. **Typing Indicators**: Live typing status updates
+1. **Step 1**: Rename tempId to messageId (schema migration + code updates)
+2. **Step 2**: Add UUID generation (replace timestamp-based IDs)
+3. **Step 3**: Implement unified queue-first flow (eliminate dual paths)
+4. **Step 4**: Add SQLite message cache operations
+5. **Step 5**: Add duplicate detection in subscription handler
 
-### Short Term (Epic 1.5)
+### Short Term (Epic 3.2 Completion)
 
-1. **Offline Support**: Message queuing and sync
-2. **Mobile Lifecycle**: Background/foreground handling
-3. **Performance**: Optimize for 1000+ messages
-4. **Polish**: Professional UI/UX and animations
+1. **Step 6**: Add incremental sync mechanism
+2. **Step 7**: Create unified queue processor
+3. **Step 8**: Add conversation load/unload logic
+4. **Step 9**: Update queue processor calls
+5. **Step 10**: Comprehensive testing
 
-### Medium Term (Epic 1.6)
+### Medium Term (Next Epics)
 
-1. **Group Chat**: Multi-user conversations with read receipts
-2. **Advanced Features**: Message reactions, rich media
-3. **Testing**: Real device testing for demo video
-4. **Documentation**: Comprehensive README and setup
+1. **Epic 2**: Mobile App Quality (background/foreground, push notifications)
+2. **Epic 5**: AI Features Implementation (translation, cultural context)
+3. **Epic 4**: Documentation & Deployment (README, demo video)
 
 ## Active Files (Current Implementation)
 
@@ -202,54 +242,70 @@
 - `app/auth/login.tsx` - Email/password authentication forms
 - `app/profile/edit.tsx` - Profile editing with language preferences
 - `app/(tabs)/profile.tsx` - Profile overview with logout functionality
-- `app/(tabs)/contacts.tsx` - Contact management with three tabs and sender profile fetching
+- `app/(tabs)/contacts.tsx` - Contact management with three tabs
 - `app/(tabs)/_layout.tsx` - Tab navigation with badges
 - `app/_layout.tsx` - Auth state handling and navigation logic
 - `stores/authStore.ts` - Authentication state management
-- `stores/contactsStore.ts` - Contact and friend management with real-time status checking
+- `stores/contactsStore.ts` - Contact and friend management
+- `stores/messagesStore.ts` - Real-time message management (needs Epic 3.2 updates)
+- `stores/connectionStore.ts` - Network connection status
 - `services/authService.ts` - Email/password authentication service
-- `services/userService.ts` - User profile CRUD operations with search
-- `services/friendService.ts` - Friend request operations with declined request handling and bidirectional search
-- `types/User.ts` - User interface with language preferences
-- `types/FriendRequest.ts` - Friend request interface
+- `services/userService.ts` - User profile CRUD operations
+- `services/friendService.ts` - Friend request operations
+- `services/messageService.ts` - Message CRUD operations (needs Epic 3.2 updates)
+- `services/conversationService.ts` - Conversation management
+- `services/sqliteService.ts` - SQLite operations (needs Epic 3.2 updates)
+- `types/User.ts` - User interface
+- `types/FriendRequest.ts` - User interface
+- `types/Message.ts` - Message interface
+- `types/Conversation.ts` - Conversation interface
 - `components/UserSearch.tsx` - User search with real-time friend status
 - `components/FriendRequestCard.tsx` - Friend request management
 - `components/ContactsList.tsx` - Friends list with search/filter
-- `firestore.rules` - Security rules for users and friend requests
-
-### Next Components to Create
-
-- `services/websocketService.ts` - WebSocket connection management
-- `stores/messagesStore.ts` - Real-time message management
-- `components/MessageBubble.tsx` - Individual message component
+- `components/ConversationsList.tsx` - Home screen conversation list
 - `components/ConversationView.tsx` - Main chat interface
+- `components/MessageBubble.tsx` - Individual message component
 - `components/TypingIndicator.tsx` - Real-time typing status
-- `components/ConnectionStatus.tsx` - Network status indicator
-- `types/Message.ts` - Message interface
-- `types/Conversation.ts` - Conversation interface
+- `components/NetworkStatusBar.tsx` - Network status indicator
+- `firestore.rules` - Security rules for users and conversations
+
+### Next Components to Modify (Epic 3.2)
+
+- `services/sqliteService.ts` - Rename tempId to messageId, add loadRecentMessages
+- `services/messageService.ts` - Add messageId parameter, idempotency, getMessagesSince
+- `stores/messagesStore.ts` - Unified queue-first flow, duplicate detection, processQueue
+- `stores/connectionStore.ts` - Call processQueue and syncMissedMessages on reconnection
+- `firestore.indexes.json` - Add composite index (conversationId, updatedAt)
+- `package.json` - Add uuid dependency
 
 ## Development Environment
 
-- **Status**: Epic 1.3 complete with all bugs fixed, ready for Epic 1.4
+- **Status**: Epic 1.4-1.5 complete, Epic 1.6-1.7 complete, Epic 3.2 planning complete
 - **Authentication**: Email/password working with profile management
 - **Contact Management**: User search, friend requests, and blocking working
 - **Profile Management**: Profile tab with logout and edit functionality working
-- **Search Functionality**: Real-time search with accurate friend status working
-- **Friend Request System**: Complete flow with proper UI updates and error handling
-- **Database**: Firestore with proper security rules
-- **Testing**: Ready for real-time messaging implementation
-- **Platform**: Cross-platform (iOS/Android/Web)
+- **Real-time Messaging**: Complete messaging infrastructure with Firestore
+- **Message Components**: Professional UI components for chat interface
+- **Typing Indicators**: Real-time typing status with user profiles
+- **Read Receipts**: Message read status tracking
+- **Unread Indicators**: Visual indicators with count badges
+- **Cross-platform Compatibility**: Works consistently on iOS and Android
+- **Android Text Fixes**: Resolved persistent text cutoff issues
+- **Performance Optimization**: FlashList migration and memoized components
+- **Network Status**: Comprehensive network monitoring and manual controls
+- **Offline Queue**: SQLite queuing implemented (sync needs Epic 3.2 fix)
+- **Testing**: Ready for Epic 3.2 implementation
 
 ## Success Metrics Progress
 
-### Core Messaging Infrastructure (18/35 points)
+### Core Messaging Infrastructure (30/35 points)
 
 - ✅ **Authentication & User Management**: 8 points complete
 - ✅ **Contact Management & Social Features**: 8 points complete
 - ✅ **Profile Management & Navigation**: 2 points complete
-- [ ] **Real-Time Message Delivery**: 12 points (next)
-- [ ] **Offline Support & Persistence**: 12 points
-- [ ] **Group Chat Functionality**: 11 points
+- ✅ **Real-Time Message Delivery**: 12 points complete
+- 🚧 **Offline Support & Persistence**: 8/12 points (queue exists, sync broken)
+- ✅ **Network Connectivity Visibility**: 8 points complete
 
 ### Mobile App Quality (0/20 points)
 
@@ -259,7 +315,7 @@
 ### Technical Implementation (3/10 points)
 
 - ✅ **Authentication & Data Management**: 3 points complete
-- [ ] **Architecture**: 5 points
+- 🚧 **Architecture**: 0/5 points (Epic 3.2 will complete this)
 - [ ] **API Security**: 2 points
 
 ### Documentation & Deployment (0/5 points)
@@ -273,15 +329,11 @@
 - [ ] **Persona Fit & Relevance**: 5 points
 - [ ] **Advanced AI Capability**: 10 points
 
-**Total Progress: 18/100 points (18%)**
+**Total Progress: 33/100 points (33%)**
 
 ## Key Files Modified This Session
 
-- `app/(tabs)/_layout.tsx` - Replaced Explore tab with Profile tab
-- `app/(tabs)/profile.tsx` - Created profile screen with logout functionality
-- `app/(tabs)/contacts.tsx` - Added sender profile fetching and tab refresh logic
-- `app/_layout.tsx` - Fixed auth guard to allow profile/edit navigation
-- `stores/contactsStore.ts` - Added checkFriendRequestStatus function and friends list refresh
-- `services/friendService.ts` - Added declined request handling, deleteFriendRequest, and bidirectional search
-- `components/UserSearch.tsx` - Added real-time friend status checking
-- `firestore.rules` - Updated security rules for user search
+- `memory-bank/activeContext.md` - Updated with Epic 3.2 planning completion
+- `memory-bank/progress.md` - Updated with current status and Epic 3.2 planning
+- `TASK_LIST.md` - Updated with Epic 3.2 implementation plan
+- Epic 3.2 comprehensive implementation plan created with 11-step approach

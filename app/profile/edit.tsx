@@ -126,8 +126,8 @@ export default function ProfileEditScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Language Preferences</Text>
         <Text style={styles.sectionDescription}>
-          Select the languages you're comfortable communicating in. This helps
-          AI features work better for you.
+          Select the languages you&apos;re comfortable communicating in. This
+          helps AI features work better for you.
         </Text>
         <View style={styles.languageGrid}>
           {SUPPORTED_LANGUAGES.map((language) => (

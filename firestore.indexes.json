@@ -42,8 +42,8 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "timestamp",
-          "order": "DESCENDING"
+          "fieldPath": "updatedAt",
+          "order": "ASCENDING"
         }
       ]
     }

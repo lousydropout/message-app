@@ -128,6 +128,7 @@ _Priority: Phase 1 - Foundation First_
   - **Acceptance**: Users can create and participate in group chats ✅
 
 - [x] **1.4.4** Build message broadcasting
+
   - Implemented real-time message distribution via Firestore
   - Messages delivered to all participants instantly
   - Added message persistence and offline support through Firestore
@@ -159,6 +160,7 @@ _Priority: Phase 1 - Foundation First_
   - **Acceptance**: Users can see when someone is typing ✅
 
 - [x] **1.5.3** Build message attribution
+
   - Display sender names and avatars in MessageBubble
   - Show message timestamps with proper formatting
   - Added conversation headers with participant names
@@ -178,36 +180,102 @@ _Priority: Phase 1 - Foundation First_
   - Optimized FlatList props for smooth scrolling
   - **Acceptance**: Smooth performance with large message lists ✅
 
-### Epic 1.6: Offline Support & Persistence
+### Epic 1.6: Offline Support & Persistence 🚧 **PARTIAL**
 
 #### Tasks:
 
-- [ ] **1.6.1** Set up SQLite database
+- [x] **1.6.1** Set up SQLite database
 
   - Create sqliteService with proper schema
   - Implement message history storage
   - Add full-text search (FTS5) for messages
-  - **Acceptance**: Messages are stored locally with search capability
+  - **Acceptance**: Messages are stored locally with search capability ✅
 
-- [ ] **1.6.2** Implement AsyncStorage for preferences
+- [x] **1.6.2** Implement AsyncStorage for preferences
 
   - Store user preferences and settings
   - Cache auth tokens and session data
   - Handle simple app configuration
-  - **Acceptance**: User preferences persist between sessions
+  - **Acceptance**: User preferences persist between sessions ✅
 
 - [ ] **1.6.3** Build offline message queuing
 
-  - Queue messages when offline
-  - Sync queued messages when online
-  - Handle conflict resolution
-  - **Acceptance**: Messages are queued offline and synced when online
+  - Queue messages when offline ✅ (SQLite queuing implemented)
+  - Sync queued messages when online ❌ (syncQueuedMessages exists but not working properly)
+  - Handle conflict resolution ❌ (not implemented)
+  - **Acceptance**: Messages are queued offline and synced when online ❌
 
 - [ ] **1.6.4** Add auto-reconnection and sync
-  - Detect network status changes
-  - Automatically reconnect WebSocket
-  - Sync missed messages from Firestore
-  - **Acceptance**: App automatically syncs when connection restored
+  - Detect network status changes ✅ (NetInfo integration complete)
+  - Automatically reconnect WebSocket ❌ (using Firestore, not WebSocket)
+  - Sync missed messages from Firestore ❌ (syncQueuedMessages not working)
+  - **Acceptance**: App automatically syncs when connection restored ❌
+
+### Epic 1.7: Network Connectivity Visibility ✅ **PARTIAL**
+
+#### Tasks:
+
+- [x] **1.7.1** Create discreet network status indicator
+
+  - Small colored dot (green/gray/yellow/red) in top-right corner
+  - Shows connected/idle/reconnecting/disconnected states
+  - Non-intrusive design that doesn't block navigation
+  - **Acceptance**: Users can see network status at a glance ✅
+
+- [x] **1.7.2** Add detailed network information modal
+
+  - Click indicator to view comprehensive network status
+  - Connection type, sync status, message queue info
+  - Sync statistics with queued message count
+  - Last sync timestamp with proper formatting
+  - **Acceptance**: Users can access detailed network information ✅
+
+- [x] **1.7.3** Implement manual sync controls
+
+  - Refresh button for force sync/reconnect
+  - Available both next to indicator and in modal
+  - Disabled when offline or already syncing
+  - **Acceptance**: Users can manually trigger sync when needed ✅
+
+- [] **1.7.4** Add auto-sync intelligence
+  - Triggers automatically when network reconnects
+  - Proper status tracking (idle → syncing → synced/error)
+  - Prevents infinite recursion with guard conditions
+  - **Acceptance**: App automatically syncs queued messages on reconnect ✅
+
+---
+
+## 🚨 Current Issues & Analysis
+
+### Epic 1.6: Offline Support Issues
+
+**Problem**: While SQLite infrastructure exists, offline message queuing and sync is not working properly.
+
+**Current State Analysis**:
+
+✅ **What's Working**:
+
+- SQLite database is properly initialized in `app/_layout.tsx`
+- SQLite service has complete schema with `queued_messages` table
+- Messages are queued to SQLite when offline (`messagesStore.sendMessage()`)
+- Network status detection works (`connectionStore` with NetInfo)
+- Auto-sync trigger exists (`connectionStore` subscription)
+
+❌ **What's Broken**:
+
+- `syncQueuedMessages()` function exists but doesn't properly send queued messages
+- Queued messages remain in SQLite and are never sent to Firestore
+- No conflict resolution between local and remote messages
+- Auto-sync triggers but doesn't complete successfully
+
+**Root Cause**: The `syncQueuedMessages()` function calls `messageService.sendMessage()` but this may not be working correctly, or there may be issues with the message replacement logic in the UI state.
+
+**Required Fixes**:
+
+1. Debug and fix `syncQueuedMessages()` to actually send queued messages to Firestore
+2. Implement proper conflict resolution for concurrent message operations
+3. Test end-to-end offline → online → sync flow
+4. Ensure queued messages are properly removed from SQLite after successful sync
 
 ---
 
@@ -228,6 +296,7 @@ _Priority: Phase 1 - Foundation First_
 - [x] **Cross-platform Compatibility**: Ensured consistent text rendering across iOS and Android
 
 **Files Modified**:
+
 - `components/MessageBubble.tsx` - Main text rendering component
 - `components/ConversationView.tsx` - Message list container
 - `components/ConversationsList.tsx` - Home screen conversation list
@@ -569,12 +638,12 @@ _Priority: Phase 3 - Final Deliverables_
 
 ## 📊 Success Metrics
 
-- **Core Messaging Infrastructure**: 18/35 points ✅ (Epic 1.1-1.3 Complete)
+- **Core Messaging Infrastructure**: 27/35 points 🚧 (Epic 1.1-1.5 Complete, 1.6 Partial, 1.7 Complete)
 - **Mobile App Quality**: 0/20 points
 - **Technical Implementation**: 3/10 points ✅ (Auth & Data Management Complete)
 - **Documentation & Deployment**: 0/5 points
 - **AI Features Implementation**: 0/30 points
-- **Total Progress**: 18/100 points (18%)
+- **Total Progress**: 30/100 points (30%)
 
 ---
 

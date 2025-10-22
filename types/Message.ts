@@ -1,7 +1,7 @@
 import { Timestamp } from "firebase/firestore";
 
 export interface Message {
-  id: string;
+  id: string; // UUID - same ID throughout message lifecycle (UI → Queue → Firestore)
   conversationId: string;
   senderId: string;
   text: string;
