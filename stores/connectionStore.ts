@@ -1,4 +1,3 @@
-import { useMessagesStore } from "@/stores/messagesStore";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { create } from "zustand";
 
@@ -15,6 +14,9 @@ export interface SyncStats {
   syncDuration: number; // milliseconds
   retryCount: number;
 }
+
+// Callback types for network events
+export type NetworkEventCallback = () => Promise<void> | void;
 
 // Connection state interface
 export interface ConnectionState {
@@ -39,6 +41,9 @@ export interface ConnectionState {
   lastError: string | null;
   errorCount: number;
 
+  // Callback management
+  networkEventCallbacks: Set<NetworkEventCallback>;
+
   // Actions
   initialize: () => () => void; // Returns unsubscribe function
   setOnline: (isOnline: boolean) => void;
@@ -50,6 +55,8 @@ export interface ConnectionState {
   clearError: () => void;
   updateQueueCounts: (queued: number, failed: number) => void;
   resetSyncStats: () => void;
+  registerNetworkCallback: (callback: NetworkEventCallback) => () => void;
+  triggerNetworkCallbacks: () => Promise<void>;
 }
 
 // Initial sync statistics
@@ -75,6 +82,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   syncStats: initialSyncStats,
   lastError: null,
   errorCount: 0,
+  networkEventCallbacks: new Set(),
 
   // Initialize network monitoring
   initialize: () => {
@@ -139,15 +147,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         setTimeout(async () => {
           try {
             console.log("🔄 Starting automatic sync after reconnection...");
-            const messagesStore = useMessagesStore.getState();
 
-            // First: Send queued messages
-            console.log("📤 Processing queued messages...");
-            await messagesStore.processQueue();
-
-            // Second: Fetch missed messages from Firestore
-            console.log("📥 Syncing missed messages...");
-            await messagesStore.syncMissedMessages();
+            // Trigger all registered network callbacks
+            await get().triggerNetworkCallbacks();
 
             console.log("✅ Automatic sync completed successfully");
             set({ isSyncing: false, syncStatus: "synced" });
@@ -298,6 +300,50 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       lastError: null,
       errorCount: 0,
     });
+  },
+
+  // Register a callback for network events (returns unsubscribe function)
+  registerNetworkCallback: (callback: NetworkEventCallback) => {
+    const { networkEventCallbacks } = get();
+    networkEventCallbacks.add(callback);
+
+    console.log(
+      `📝 Registered network callback. Total callbacks: ${networkEventCallbacks.size}`
+    );
+
+    // Return unsubscribe function
+    return () => {
+      const { networkEventCallbacks: currentCallbacks } = get();
+      currentCallbacks.delete(callback);
+      console.log(
+        `📝 Unregistered network callback. Total callbacks: ${currentCallbacks.size}`
+      );
+    };
+  },
+
+  // Trigger all registered network callbacks
+  triggerNetworkCallbacks: async () => {
+    const { networkEventCallbacks } = get();
+
+    if (networkEventCallbacks.size === 0) {
+      console.log("📝 No network callbacks registered");
+      return;
+    }
+
+    console.log(
+      `📝 Triggering ${networkEventCallbacks.size} network callbacks...`
+    );
+
+    const promises = Array.from(networkEventCallbacks).map(async (callback) => {
+      try {
+        await callback();
+      } catch (error) {
+        console.error("❌ Network callback failed:", error);
+      }
+    });
+
+    await Promise.all(promises);
+    console.log("✅ All network callbacks completed");
   },
 }));
 

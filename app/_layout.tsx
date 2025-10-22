@@ -13,6 +13,7 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import sqliteService from "@/services/sqliteService";
 import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { setupStoreConnections } from "@/stores/setupStores";
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -50,6 +51,12 @@ export default function RootLayout() {
     const unsubscribeConnection = initializeConnection();
     return unsubscribeConnection;
   }, [initializeConnection]);
+
+  useEffect(() => {
+    // Setup store connections after connection store is initialized
+    const unsubscribeStores = setupStoreConnections();
+    return unsubscribeStores;
+  }, []);
 
   useEffect(() => {
     // Handle navigation based on auth state

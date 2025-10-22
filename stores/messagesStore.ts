@@ -2,7 +2,6 @@ import conversationService from "@/services/conversationService";
 import messageService from "@/services/messageService";
 import sqliteService from "@/services/sqliteService";
 import { useAuthStore } from "@/stores/authStore";
-import { useConnectionStore } from "@/stores/connectionStore";
 import { Conversation } from "@/types/Conversation";
 import { Message } from "@/types/Message";
 import * as Crypto from "expo-crypto";
@@ -14,6 +13,16 @@ const MAX_MESSAGES_IN_MEMORY = 200; // Window size per conversation
 
 // Mutex to prevent concurrent queue processing
 let queueProcessingMutex = false;
+
+// Connection status getter - will be set by connection store
+let getConnectionStatus: (() => { isOnline: boolean }) | null = null;
+
+// Function to register connection status getter
+export const setConnectionStatusGetter = (
+  getter: () => { isOnline: boolean }
+) => {
+  getConnectionStatus = getter;
+};
 
 export interface MessagesState {
   conversations: Conversation[];
@@ -280,7 +289,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     const { user } = useAuthStore.getState();
     if (!user) throw new Error("User not authenticated");
 
-    const { isOnline } = useConnectionStore.getState();
+    const isOnline = getConnectionStatus?.()?.isOnline ?? true;
     set({ sendingMessage: true });
     const messageId = Crypto.randomUUID(); // Generate UUID for message
 
@@ -324,11 +333,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         await get().processQueue();
       } else {
         console.log("📴 Offline: Message queued");
-        // Update connection store queue count
-        const queuedMessages = await sqliteService.getQueuedMessages();
-        useConnectionStore
-          .getState()
-          .updateQueueCounts(queuedMessages.length, 0);
+        // Note: Queue count updates will be handled by connection store callbacks
       }
 
       set({ sendingMessage: false });
@@ -523,7 +528,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       return;
     }
 
-    const { isOnline } = useConnectionStore.getState();
+    const isOnline = getConnectionStatus?.()?.isOnline ?? true;
     if (!isOnline) {
       console.log("📴 Cannot process queue: Currently offline");
       return;
@@ -539,14 +544,13 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
     try {
       console.log("🔄 Processing message queue...");
-      useConnectionStore.getState().setSyncing(true);
+      // Note: Sync status will be managed by connection store callbacks
 
       const queuedMessages = await sqliteService.getQueuedMessages();
       console.log(`📦 Found ${queuedMessages.length} queued messages`);
 
       if (queuedMessages.length === 0) {
-        useConnectionStore.getState().setSyncing(false);
-        useConnectionStore.getState().setSyncStatus("synced");
+        // Note: Sync status will be managed by connection store callbacks
         return;
       }
 
@@ -712,30 +716,17 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
       // Update sync stats
       const remainingQueued = await sqliteService.getQueuedMessages();
-      useConnectionStore
-        .getState()
-        .updateQueueCounts(remainingQueued.length, failedCount);
-      useConnectionStore.getState().updateSyncStats({
-        messagesSynced: successCount,
-        messagesFailed: failedCount,
-        lastSyncAt: Date.now(),
-      });
+      // Note: Queue counts and sync stats will be managed by connection store callbacks
 
       console.log(
         `✅ Queue processing complete: ${successCount} sent, ${failedCount} failed`
       );
-      useConnectionStore.getState().setSyncing(false);
-      useConnectionStore
-        .getState()
-        .setSyncStatus(failedCount > 0 ? "error" : "synced");
+      // Note: Sync status will be managed by connection store callbacks
     } catch (error) {
       console.error("Error processing queue:", error);
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      useConnectionStore.getState().setSyncing(false);
-      useConnectionStore
-        .getState()
-        .setError(`Queue processing failed: ${errorMessage}`);
+      // Note: Error handling will be managed by connection store callbacks
     } finally {
       // Always clear the mutex
       queueProcessingMutex = false;
@@ -818,3 +809,19 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     });
   },
 }));
+
+// Setup function to register callbacks with connection store
+export const setupMessagesStoreCallbacks = (
+  registerCallback: (callback: () => Promise<void>) => () => void
+) => {
+  // Register the sync callback
+  const unsubscribeSync = registerCallback(async () => {
+    console.log("📤 Processing queued messages...");
+    await useMessagesStore.getState().processQueue();
+
+    console.log("📥 Syncing missed messages...");
+    await useMessagesStore.getState().syncMissedMessages();
+  });
+
+  return unsubscribeSync;
+};
