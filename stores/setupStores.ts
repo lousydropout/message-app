@@ -1,4 +1,5 @@
 import { useConnectionStore } from "./connectionStore";
+import { logger } from "./loggerStore";
 import {
   setConnectionStatusGetter,
   setupMessagesStoreCallbacks,
@@ -6,7 +7,7 @@ import {
 
 // Setup function to initialize store connections
 export const setupStoreConnections = () => {
-  console.log("🔗 Setting up store connections...");
+  logger.info("stores", "🔗 Setting up store connections...");
 
   // Set up connection status getter for messages store
   setConnectionStatusGetter(() => useConnectionStore.getState());
@@ -16,12 +17,12 @@ export const setupStoreConnections = () => {
     useConnectionStore.getState().registerNetworkCallback
   );
 
-  console.log("✅ Store connections established");
+  logger.info("stores", "✅ Store connections established");
 
   // Return cleanup function
   return () => {
-    console.log("🔗 Cleaning up store connections...");
+    logger.info("stores", "🔗 Cleaning up store connections...");
     unsubscribeMessages();
-    console.log("✅ Store connections cleaned up");
+    logger.info("stores", "✅ Store connections cleaned up");
   };
 };

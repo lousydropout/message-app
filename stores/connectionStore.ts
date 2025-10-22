@@ -1,4 +1,7 @@
+import { logger } from "@/stores/loggerStore";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
+import { getApp } from "firebase/app";
+import { getDatabase, onValue, ref } from "firebase/database";
 import { create } from "zustand";
 
 // Connection status types
@@ -86,7 +89,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
   // Initialize network monitoring
   initialize: () => {
-    console.log("🔌 Initializing connection store...");
+    logger.info("connection", "Initializing connection store");
 
     // Set up network state listener
     const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
@@ -96,9 +99,18 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         : "offline";
       const networkType = state.type || null;
 
-      console.log(
-        `🌐 Network status changed: ${connectionStatus} (${networkType})`
+      logger.info(
+        "network",
+        `Network status changed: ${connectionStatus} (${networkType})`
       );
+
+      logger.info("network", "Network state changed", {
+        isConnected: state.isConnected,
+        isInternetReachable: state.isInternetReachable,
+        type: state.type,
+        details: state.details,
+        timestamp: Date.now(),
+      });
 
       set({
         isOnline,
@@ -111,7 +123,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
       if (!isOnline && isSyncing) {
         // Network went offline while syncing
-        console.log("❌ Network lost during sync");
+        logger.warning("network", "Network lost during sync");
         set({
           syncStatus: "error",
           isSyncing: false,
@@ -135,7 +147,10 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         !isSyncing &&
         !syncInProgress
       ) {
-        console.log("🔄 Network restored - triggering sync via subscription");
+        logger.info(
+          "network",
+          "Network restored - triggering sync via subscription"
+        );
 
         // Set local mutex immediately to prevent race conditions
         syncInProgress = true;
@@ -146,15 +161,17 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         // Small delay to ensure connection is stable
         setTimeout(async () => {
           try {
-            console.log("🔄 Starting automatic sync after reconnection...");
+            logger.info("sync", "Starting automatic sync after reconnection");
 
             // Trigger all registered network callbacks
             await get().triggerNetworkCallbacks();
 
-            console.log("✅ Automatic sync completed successfully");
+            logger.info("sync", "Automatic sync completed successfully");
             set({ isSyncing: false, syncStatus: "synced" });
           } catch (error) {
-            console.error("❌ Failed to trigger sync:", error);
+            logger.error("sync", "Failed to trigger sync", {
+              error: error instanceof Error ? error.message : "Unknown error",
+            });
             // Reset sync status on error
             set({
               syncStatus: "error",
@@ -178,8 +195,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         : "offline";
       const networkType = state.type || null;
 
-      console.log(
-        `🌐 Initial network state: ${connectionStatus} (${networkType})`
+      logger.info(
+        "network",
+        `Initial network state: ${connectionStatus} (${networkType})`
       );
 
       set({
@@ -191,27 +209,88 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       });
     });
 
+    // Monitor Firebase connection state
+    let unsubscribeFirebase: (() => void) | null = null;
+    try {
+      const app = getApp();
+      const database = getDatabase(app);
+      const connectedRef = ref(database, ".info/connected");
+
+      unsubscribeFirebase = onValue(connectedRef, (snapshot) => {
+        const isFirebaseConnected = snapshot.val();
+
+        logger.info("firebase", "Firebase connection state changed", {
+          isConnected: isFirebaseConnected,
+          timestamp: Date.now(),
+        });
+
+        if (!isFirebaseConnected) {
+          logger.warning(
+            "firebase",
+            "Firebase is offline despite network being available",
+            {
+              timestamp: Date.now(),
+            }
+          );
+        }
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      logger.error(
+        "firebase",
+        "Failed to initialize Firebase connection monitoring",
+        {
+          error: errorMessage,
+          timestamp: Date.now(),
+        }
+      );
+    }
+
     // Return cleanup function
     return () => {
       unsubscribe();
       unsubscribeSync();
+      if (unsubscribeFirebase) {
+        unsubscribeFirebase();
+      }
     };
   },
 
   // Set online status manually
   setOnline: (isOnline: boolean) => {
     const connectionStatus: ConnectionStatus = isOnline ? "online" : "offline";
-    console.log(`🌐 Manual network status: ${connectionStatus}`);
+    const previousStatus = get().connectionStatus;
+    logger.info("network", `Manual network status: ${connectionStatus}`);
+
+    logger.info(
+      "network",
+      `Manual network status change to ${connectionStatus}`,
+      {
+        isOnline,
+        connectionStatus,
+        previousStatus,
+        timestamp: Date.now(),
+      }
+    );
 
     set({
       isOnline,
       connectionStatus,
     });
+
+    // Trigger network callbacks when status changes
+    get().triggerNetworkCallbacks();
   },
 
   // Set sync status
   setSyncStatus: (syncStatus: SyncStatus) => {
-    console.log(`🔄 Sync status: ${syncStatus}`);
+    logger.info("sync", `Sync status: ${syncStatus}`);
+
+    logger.info("sync", `Sync status changed to ${syncStatus}`, {
+      syncStatus,
+      timestamp: Date.now(),
+    });
 
     set({ syncStatus });
 
@@ -223,7 +302,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
   // Set syncing state
   setSyncing: (isSyncing: boolean) => {
-    console.log(`🔄 Syncing: ${isSyncing}`);
+    logger.info("sync", `Syncing: ${isSyncing}`);
 
     set({
       isSyncing,
@@ -236,7 +315,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     const currentStats = get().syncStats;
     const updatedStats = { ...currentStats, ...stats };
 
-    console.log("📊 Sync stats updated:", updatedStats);
+    logger.debug("sync", "Sync stats updated", updatedStats);
 
     set({ syncStats: updatedStats });
   },
@@ -249,14 +328,14 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       retryCount: syncStats.retryCount + 1,
     };
 
-    console.log(`🔄 Retry count: ${updatedStats.retryCount}`);
+    logger.debug("sync", `Retry count: ${updatedStats.retryCount}`);
 
     set({ syncStats: updatedStats });
   },
 
   // Set error
   setError: (error: string) => {
-    console.error(`❌ Connection error: ${error}`);
+    logger.error("connection", `Connection error: ${error}`);
 
     set({
       lastError: error,
@@ -268,7 +347,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
   // Clear error
   clearError: () => {
-    console.log("✅ Error cleared");
+    logger.info("connection", "Error cleared");
 
     set({
       lastError: null,
@@ -281,9 +360,17 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     queuedMessagesCount: number,
     failedMessagesCount: number
   ) => {
-    console.log(
-      `📦 Queue counts - Queued: ${queuedMessagesCount}, Failed: ${failedMessagesCount}`
+    logger.debug(
+      "queue",
+      `Queue counts - Queued: ${queuedMessagesCount}, Failed: ${failedMessagesCount}`
     );
+
+    logger.debug("connection", "Updating queue counts", {
+      queued: queuedMessagesCount,
+      failed: failedMessagesCount,
+      previousQueued: get().queuedMessagesCount,
+      previousFailed: get().failedMessagesCount,
+    });
 
     set({
       queuedMessagesCount,
@@ -293,7 +380,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
   // Reset sync statistics
   resetSyncStats: () => {
-    console.log("🔄 Sync stats reset");
+    logger.info("sync", "Sync stats reset");
 
     set({
       syncStats: initialSyncStats,
@@ -307,43 +394,93 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     const { networkEventCallbacks } = get();
     networkEventCallbacks.add(callback);
 
-    console.log(
-      `📝 Registered network callback. Total callbacks: ${networkEventCallbacks.size}`
+    logger.debug(
+      "network",
+      `Registered network callback. Total callbacks: ${networkEventCallbacks.size}`
     );
+
+    logger.info("network", "Network callback registered", {
+      totalCallbacks: networkEventCallbacks.size,
+      timestamp: Date.now(),
+    });
 
     // Return unsubscribe function
     return () => {
       const { networkEventCallbacks: currentCallbacks } = get();
       currentCallbacks.delete(callback);
-      console.log(
-        `📝 Unregistered network callback. Total callbacks: ${currentCallbacks.size}`
+      logger.debug(
+        "network",
+        `Unregistered network callback. Total callbacks: ${currentCallbacks.size}`
       );
+
+      logger.info("network", "Network callback unregistered", {
+        totalCallbacks: currentCallbacks.size,
+        timestamp: Date.now(),
+      });
     };
   },
 
   // Trigger all registered network callbacks
   triggerNetworkCallbacks: async () => {
-    const { networkEventCallbacks } = get();
+    const { networkEventCallbacks, isOnline, connectionStatus } = get();
+
+    logger.debug("network", "Triggering network callbacks", {
+      callbackCount: networkEventCallbacks.size,
+      isOnline,
+      connectionStatus,
+      timestamp: Date.now(),
+    });
 
     if (networkEventCallbacks.size === 0) {
-      console.log("📝 No network callbacks registered");
+      logger.debug("network", "No network callbacks registered");
+      logger.debug("network", "No network callbacks registered");
       return;
     }
 
-    console.log(
-      `📝 Triggering ${networkEventCallbacks.size} network callbacks...`
+    logger.debug(
+      "network",
+      `Triggering ${networkEventCallbacks.size} network callbacks`
     );
 
-    const promises = Array.from(networkEventCallbacks).map(async (callback) => {
-      try {
-        await callback();
-      } catch (error) {
-        console.error("❌ Network callback failed:", error);
+    const promises = Array.from(networkEventCallbacks).map(
+      async (callback, index) => {
+        try {
+          logger.debug("network", `Executing network callback ${index + 1}`, {
+            callbackIndex: index,
+            timestamp: Date.now(),
+          });
+          await callback();
+          logger.debug(
+            "network",
+            `Network callback ${index + 1} completed successfully`,
+            {
+              callbackIndex: index,
+              timestamp: Date.now(),
+            }
+          );
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error";
+          logger.error("network", `Network callback ${index + 1} failed`, {
+            callbackIndex: index,
+            error: errorMessage,
+          });
+          logger.error("network", `Network callback ${index + 1} failed`, {
+            callbackIndex: index,
+            error: errorMessage,
+            timestamp: Date.now(),
+          });
+        }
       }
-    });
+    );
 
     await Promise.all(promises);
-    console.log("✅ All network callbacks completed");
+
+    logger.info("network", "All network callbacks completed", {
+      callbackCount: networkEventCallbacks.size,
+      timestamp: Date.now(),
+    });
+    logger.info("network", "All network callbacks completed");
   },
 }));
 

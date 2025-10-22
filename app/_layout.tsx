@@ -13,6 +13,7 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import sqliteService from "@/services/sqliteService";
 import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useLoggerStore } from "@/stores/loggerStore";
 import { setupStoreConnections } from "@/stores/setupStores";
 
 export const unstable_settings = {
@@ -38,8 +39,27 @@ export default function RootLayout() {
       try {
         await sqliteService.initialize();
         console.log("✅ SQLite initialized successfully");
+
+        // Initialize logger and cleanup old logs
+        const { loadLogs } = useLoggerStore.getState();
+        await loadLogs();
+
+        // Clean up logs older than 7 days
+        await sqliteService.clearOldLogs(7);
+
+        // Log successful initialization
+        useLoggerStore.getState().info("app", "App initialized successfully", {
+          timestamp: Date.now(),
+          sqliteInitialized: true,
+        });
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
         console.error("❌ SQLite initialization failed:", error);
+        useLoggerStore.getState().error("app", "SQLite initialization failed", {
+          error: errorMessage,
+          timestamp: Date.now(),
+        });
       }
     };
 

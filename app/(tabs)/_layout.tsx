@@ -56,9 +56,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="test-sqlite"
         options={{
-          title: "Test SQLite",
+          title: "Diagnostics",
           tabBarIcon: ({ color, size }) => (
-            <Text style={{ color, fontSize: size }}>🧪</Text>
+            <Text style={{ color, fontSize: size }}>🩺</Text>
           ),
         }}
       />

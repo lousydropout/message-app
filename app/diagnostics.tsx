@@ -3,23 +3,40 @@ import {
   connectionHelpers,
   useConnectionStore,
 } from "@/stores/connectionStore";
+import { useLoggerStore } from "@/stores/loggerStore";
+import { LogLevel } from "@/types/Log";
 import { Message } from "@/types/Message";
-import React, { useState } from "react";
+import * as Clipboard from "expo-clipboard";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Button,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 
-export default function TestSQLiteScreen() {
+export default function DiagnosticsScreen() {
   const [testMessage, setTestMessage] = useState("Hello SQLite!");
   const [searchQuery, setSearchQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [indexes, setIndexes] = useState<string[]>([]);
+
+  // Logs state
+  const [selectedLogLevel, setSelectedLogLevel] = useState<
+    LogLevel | "verbose"
+  >("verbose");
+  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
+
+  // Logger store
+  const { logs, loadLogs, clearLogs } = useLoggerStore();
+
+  // ScrollView ref for auto-scroll to bottom
+  const logsScrollViewRef = useRef<ScrollView>(null);
 
   // Connection store state
   const {
@@ -34,15 +51,124 @@ export default function TestSQLiteScreen() {
     lastError,
   } = useConnectionStore();
 
-  // Test 1: Initialize SQLite
+  // Load logs on component mount
+  useEffect(() => {
+    loadLogs();
+  }, [loadLogs]);
+
+  // Helper functions for logs
+  const getLogLevelColor = (level: LogLevel): string => {
+    switch (level) {
+      case "error":
+        return "#d32f2f";
+      case "warning":
+        return "#f57c00";
+      case "info":
+        return "#0288d1";
+      case "debug":
+        return "#6c757d";
+      default:
+        return "#6c757d";
+    }
+  };
+
+  const formatTimestamp = (timestamp: number): string => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
+
+  const filteredLogs = logs
+    .filter((log) => {
+      if (selectedLogLevel === "verbose") return true;
+      const levelOrder = ["debug", "info", "warning", "error"];
+      const selectedIndex = levelOrder.indexOf(selectedLogLevel);
+      const logIndex = levelOrder.indexOf(log.level);
+      return logIndex >= selectedIndex;
+    })
+    .reverse(); // Reverse to show newest at bottom
+
+  // Auto-scroll to bottom when logs change
+  useEffect(() => {
+    if (logsScrollViewRef.current && filteredLogs.length > 0) {
+      setTimeout(() => {
+        logsScrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [filteredLogs]);
+
+  const toggleLogExpansion = (logId: string) => {
+    setExpandedLogs((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(logId)) {
+        newSet.delete(logId);
+      } else {
+        newSet.add(logId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleClearLogs = async () => {
+    try {
+      await clearLogs();
+      alert("All logs cleared successfully!");
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      alert("Failed to clear logs: " + errorMessage);
+    }
+  };
+
+  const handleLoadLogs = async () => {
+    try {
+      await loadLogs(
+        100,
+        selectedLogLevel === "verbose" ? undefined : selectedLogLevel
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      alert("Failed to load logs: " + errorMessage);
+    }
+  };
+
+  const handleCopyLogs = async () => {
+    try {
+      const logsText = filteredLogs
+        .map((log) => {
+          const timestamp = formatTimestamp(log.timestamp);
+          const metadata = log.metadata
+            ? `\n  Metadata: ${JSON.stringify(log.metadata)}`
+            : "";
+          return `[${timestamp}] ${log.level.toUpperCase()} [${log.category}] ${
+            log.message
+          }${metadata}`;
+        })
+        .join("\n\n");
+
+      await Clipboard.setStringAsync(logsText);
+      Alert.alert("Success", "Logs copied to clipboard!");
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      Alert.alert("Error", "Failed to copy logs: " + errorMessage);
+    }
+  };
   const testInitialize = async () => {
     try {
       await sqliteService.initialize();
       console.log("✅ SQLite initialized");
       alert("SQLite initialized successfully!");
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       console.error("❌ Initialization failed:", error);
-      alert("Initialization failed: " + error.message);
+      alert("Initialization failed: " + errorMessage);
     }
   };
 
@@ -68,8 +194,10 @@ export default function TestSQLiteScreen() {
       // Refresh stats
       await testGetStats();
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       console.error("❌ Save failed:", error);
-      alert("Save failed: " + error.message);
+      alert("Save failed: " + errorMessage);
     }
   };
 
@@ -80,8 +208,10 @@ export default function TestSQLiteScreen() {
       setResults(searchResults);
       console.log("✅ Search results:", searchResults);
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       console.error("❌ Search failed:", error);
-      alert("Search failed: " + error.message);
+      alert("Search failed: " + errorMessage);
     }
   };
 
@@ -92,8 +222,10 @@ export default function TestSQLiteScreen() {
       setStats(dbStats);
       console.log("✅ Stats:", dbStats);
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       console.error("❌ Stats failed:", error);
-      alert("Stats failed: " + error.message);
+      alert("Stats failed: " + errorMessage);
     }
   };
 
@@ -113,8 +245,10 @@ export default function TestSQLiteScreen() {
       // Refresh stats
       await testGetStats();
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       console.error("❌ Queue failed:", error);
-      alert("Queue failed: " + error.message);
+      alert("Queue failed: " + errorMessage);
     }
   };
 
@@ -129,8 +263,10 @@ export default function TestSQLiteScreen() {
       await testGetStats();
       setResults([]);
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       console.error("❌ Clear failed:", error);
-      alert("Clear failed: " + error.message);
+      alert("Clear failed: " + errorMessage);
     }
   };
 
@@ -196,19 +332,21 @@ export default function TestSQLiteScreen() {
   const testUpdateIndexes = async () => {
     try {
       console.log("🔄 Updating database indexes...");
-      
+
       // Call the initialize method which will create all indexes
       await sqliteService.initialize();
-      
+
       console.log("✅ All indexes updated successfully!");
       alert("Database indexes updated successfully!");
-      
+
       // Refresh stats and indexes to show updated info
       await testGetStats();
       await testGetIndexes();
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       console.error("❌ Index update failed:", error);
-      alert("Index update failed: " + error.message);
+      alert("Index update failed: " + errorMessage);
     }
   };
 
@@ -219,14 +357,111 @@ export default function TestSQLiteScreen() {
       setIndexes(dbIndexes);
       console.log("✅ Indexes:", dbIndexes);
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       console.error("❌ Get indexes failed:", error);
-      alert("Get indexes failed: " + error.message);
+      alert("Get indexes failed: " + errorMessage);
     }
   };
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>SQLite Service Tests</Text>
+      <Text style={styles.title}>Diagnostics</Text>
+
+      {/* System Logs Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>📋 System Logs</Text>
+
+        {/* Log Level Filter Buttons */}
+        <View style={styles.filterButtons}>
+          {(["error", "warning", "info", "verbose"] as const).map((level) => (
+            <TouchableOpacity
+              key={level}
+              style={[
+                styles.filterButton,
+                selectedLogLevel === level && styles.filterButtonActive,
+              ]}
+              onPress={() => setSelectedLogLevel(level)}
+            >
+              <Text
+                style={[
+                  styles.filterButtonText,
+                  selectedLogLevel === level && styles.filterButtonTextActive,
+                ]}
+              >
+                {level === "verbose"
+                  ? "Verbose"
+                  : level.charAt(0).toUpperCase() + level.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Log Actions */}
+        <View style={styles.logActions}>
+          <Button title="Refresh Logs" onPress={handleLoadLogs} />
+          <Button title="Copy Logs" onPress={handleCopyLogs} />
+          <Button
+            title="Clear All Logs"
+            onPress={handleClearLogs}
+            color="red"
+          />
+        </View>
+
+        {/* Logs List */}
+        <ScrollView
+          ref={logsScrollViewRef}
+          style={styles.logsContainer}
+          nestedScrollEnabled
+        >
+          {filteredLogs.length === 0 ? (
+            <Text style={styles.noLogsText}>No logs found</Text>
+          ) : (
+            filteredLogs.map((log) => (
+              <View key={log.id} style={styles.logItem}>
+                <TouchableOpacity
+                  style={styles.logHeader}
+                  onPress={() => toggleLogExpansion(log.id)}
+                >
+                  <View style={styles.logInfo}>
+                    <Text style={styles.logTimestamp}>
+                      {formatTimestamp(log.timestamp)}
+                    </Text>
+                    <View
+                      style={[
+                        styles.logLevelBadge,
+                        { backgroundColor: getLogLevelColor(log.level) },
+                      ]}
+                    >
+                      <Text style={styles.logLevelText}>
+                        {log.level.toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.logCategoryBadge}>
+                      <Text style={styles.logCategoryText}>{log.category}</Text>
+                    </View>
+                  </View>
+                  {log.metadata && (
+                    <View style={styles.expandButton}>
+                      <Text style={styles.expandButtonText}>
+                        {expandedLogs.has(log.id) ? "▼" : "▶"}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                <Text style={styles.logMessage}>{log.message}</Text>
+                {log.metadata && expandedLogs.has(log.id) && (
+                  <View style={styles.logMetadata}>
+                    <Text style={styles.logMetadataText}>
+                      {JSON.stringify(log.metadata, null, 2)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ))
+          )}
+        </ScrollView>
+      </View>
 
       {/* Connection Status Display */}
       <View style={styles.section}>
@@ -342,10 +577,11 @@ export default function TestSQLiteScreen() {
         <Text style={styles.sectionTitle}>9. Update Database Indexes</Text>
         <Button title="Update All Indexes" onPress={testUpdateIndexes} />
         <Text style={styles.helpText}>
-          Creates/updates all performance indexes including the new composite indexes:
-          • Messages: (conversationId, id), (conversationId, updatedAt), (conversationId, id, updatedAt)
-          • Conversations: (type), (type, updatedAt)
-          • Queued Messages: (conversationId, timestamp), (retryCount)
+          Creates/updates all performance indexes including the new composite
+          indexes: • Messages: (conversationId, id), (conversationId,
+          updatedAt), (conversationId, id, updatedAt) • Conversations: (type),
+          (type, updatedAt) • Queued Messages: (conversationId, timestamp),
+          (retryCount)
         </Text>
       </View>
 
@@ -355,7 +591,9 @@ export default function TestSQLiteScreen() {
         <Button title="Get Indexes" onPress={testGetIndexes} />
         {indexes.length > 0 && (
           <View>
-            <Text style={styles.resultsTitle}>Current Indexes ({indexes.length}):</Text>
+            <Text style={styles.resultsTitle}>
+              Current Indexes ({indexes.length}):
+            </Text>
             {indexes.map((index, idx) => (
               <Text key={idx} style={styles.resultItem}>
                 {index}
@@ -430,5 +668,121 @@ const styles = StyleSheet.create({
     marginTop: 5,
     color: "#666",
     fontStyle: "italic",
+  },
+  // Log styles
+  filterButtons: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 10,
+  },
+  filterButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 8,
+    marginBottom: 8,
+    backgroundColor: "#e9ecef",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#dee2e6",
+  },
+  filterButtonActive: {
+    backgroundColor: "#007AFF",
+    borderColor: "#007AFF",
+  },
+  filterButtonText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#495057",
+  },
+  filterButtonTextActive: {
+    color: "#ffffff",
+  },
+  logActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  logsContainer: {
+    maxHeight: 300,
+    borderWidth: 1,
+    borderColor: "#dee2e6",
+    borderRadius: 8,
+    backgroundColor: "#ffffff",
+  },
+  noLogsText: {
+    textAlign: "center",
+    padding: 20,
+    color: "#6c757d",
+    fontStyle: "italic",
+  },
+  logItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f8f9fa",
+  },
+  logHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  logInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  logTimestamp: {
+    fontSize: 12,
+    color: "#6c757d",
+    marginRight: 8,
+    fontFamily: "monospace",
+  },
+  logLevelBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  logLevelText: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#ffffff",
+  },
+  logCategoryBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: "#e9ecef",
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  logCategoryText: {
+    fontSize: 10,
+    fontWeight: "500",
+    color: "#495057",
+  },
+  expandButton: {
+    padding: 4,
+  },
+  expandButtonText: {
+    fontSize: 12,
+    color: "#6c757d",
+  },
+  logMessage: {
+    fontSize: 14,
+    color: "#212529",
+    lineHeight: 18,
+  },
+  logMetadata: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: "#007AFF",
+  },
+  logMetadataText: {
+    fontSize: 11,
+    fontFamily: "monospace",
+    color: "#495057",
   },
 });

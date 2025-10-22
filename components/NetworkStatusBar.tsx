@@ -1,4 +1,5 @@
 import { useConnectionStore } from "@/stores/connectionStore";
+import { logger } from "@/stores/loggerStore";
 import { useMessagesStore } from "@/stores/messagesStore";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
@@ -51,7 +52,7 @@ export default function NetworkStatusBar() {
         processQueue();
       }
     } catch (error) {
-      console.error("Error triggering manual sync:", error);
+      logger.error("network", "Error triggering manual sync:", error);
     }
   };
 

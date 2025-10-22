@@ -2,6 +2,8 @@ import conversationService from "@/services/conversationService";
 import messageService from "@/services/messageService";
 import sqliteService from "@/services/sqliteService";
 import { useAuthStore } from "@/stores/authStore";
+import { useConnectionStore } from "@/stores/connectionStore";
+import { logger } from "@/stores/loggerStore";
 import { Conversation } from "@/types/Conversation";
 import { Message } from "@/types/Message";
 import * as Crypto from "expo-crypto";
@@ -76,7 +78,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       );
       set({ conversations, loading: false });
     } catch (error) {
-      console.error("Error loading conversations:", error);
+      logger.error("messages", "Error loading conversations", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
       set({ loading: false });
       throw error;
     }
@@ -90,13 +94,17 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       subscriptions.conversations();
     }
 
-    console.log(`[DEBUG] Subscribing to conversations for user: ${userId}`);
+    logger.debug(
+      "messages",
+      `Subscribing to conversations for user: ${userId}`
+    );
 
     const unsubscribe = conversationService.subscribeToConversations(
       userId,
       (conversations) => {
-        console.log(
-          `[DEBUG] Received ${conversations.length} conversations:`,
+        logger.debug(
+          "messages",
+          `Received ${conversations.length} conversations`,
           conversations.map((c) => ({
             id: c.id,
             type: c.type,
@@ -148,8 +156,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             conversationId
           );
           if (sqliteMessages.length > 0) {
-            console.log(
-              `📦 Loaded ${sqliteMessages.length} messages from SQLite`
+            logger.debug(
+              "messages",
+              `Loaded ${sqliteMessages.length} messages from SQLite`
             );
             set((state) => ({
               messages: {
@@ -160,9 +169,15 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             }));
           }
         } catch (sqliteError) {
-          console.warn(
-            "SQLite load failed, falling back to Firestore:",
-            sqliteError
+          logger.warning(
+            "messages",
+            "SQLite load failed, falling back to Firestore",
+            {
+              error:
+                sqliteError instanceof Error
+                  ? sqliteError.message
+                  : "Unknown error",
+            }
           );
         }
       }
@@ -185,7 +200,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         loading: false,
       }));
     } catch (error) {
-      console.error("Error loading messages:", error);
+      logger.error("messages", "Error loading messages", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
       set({ loading: false });
       throw error;
     }
@@ -293,6 +310,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     set({ sendingMessage: true });
     const messageId = Crypto.randomUUID(); // Generate UUID for message
 
+    logger.info("messages", "Starting to send message", {
+      messageId,
+      conversationId,
+      senderId: user.uid,
+      isOnline,
+      textLength: text.length,
+    });
+
     try {
       // Always queue first (unified flow)
       if (sqliteService.isInitialized()) {
@@ -329,16 +354,46 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
       // If online: process queue immediately
       if (isOnline) {
-        console.log("📡 Online: Processing queue immediately");
+        logger.debug("messages", "Processing queue immediately (online)", {
+          messageId,
+          conversationId,
+        });
+        logger.debug("messages", "Processing queue immediately (online)", {
+          messageId,
+        });
         await get().processQueue();
+
+        logger.info("messages", "Message sent successfully", {
+          messageId,
+          conversationId,
+        });
       } else {
-        console.log("📴 Offline: Message queued");
-        // Note: Queue count updates will be handled by connection store callbacks
+        logger.info("messages", "Message queued (offline)", { messageId });
+        logger.info("messages", "Message queued (offline)", { messageId });
+
+        // Update queue count in connection store
+        const { updateQueueCounts } = useConnectionStore.getState();
+        const currentStats = useConnectionStore.getState();
+        updateQueueCounts(
+          currentStats.queuedMessagesCount + 1,
+          currentStats.failedMessagesCount
+        );
       }
 
       set({ sendingMessage: false });
     } catch (error) {
-      console.error("Error sending message:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      logger.error("messages", "Failed to send message", {
+        messageId,
+        conversationId,
+        error: errorMessage,
+      });
+      logger.error("messages", "Failed to send message", {
+        messageId,
+        conversationId,
+        error: errorMessage,
+      });
 
       // Mark message as failed
       set((state) => ({
@@ -359,7 +414,12 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             error instanceof Error ? error.message : String(error);
           await sqliteService.updateQueuedMessageRetry(messageId, errorMessage);
         } catch (sqliteError) {
-          console.warn("Failed to update queued message retry:", sqliteError);
+          logger.warning("messages", "Failed to update queued message retry", {
+            error:
+              sqliteError instanceof Error
+                ? sqliteError.message
+                : "Unknown error",
+          });
         }
       }
 
@@ -412,7 +472,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         },
       }));
     } catch (error) {
-      console.error("Error retrying message:", error);
+      logger.error("messages", "Error retrying message", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
 
       // Revert to failed status
       set((state) => ({
@@ -449,7 +511,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         },
       }));
     } catch (error) {
-      console.error("Error marking conversation as read:", error);
+      logger.error("messages", "Error marking conversation as read", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
       throw error;
     }
   },
@@ -465,7 +529,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         isTyping
       );
     } catch (error) {
-      console.error("Error updating typing status:", error);
+      logger.error("messages", "Error updating typing status", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   },
 
@@ -485,7 +551,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
       return conversationId;
     } catch (error) {
-      console.error("Error creating direct conversation:", error);
+      logger.error("messages", "Error creating direct conversation", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
       throw error;
     }
   },
@@ -510,7 +578,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
       return conversationId;
     } catch (error) {
-      console.error("Error creating group conversation:", error);
+      logger.error("messages", "Error creating group conversation", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
       throw error;
     }
   },
@@ -518,24 +588,68 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   async processQueue() {
     // Prevent concurrent queue processing
     if (queueProcessingMutex) {
-      console.log("🔄 Queue processing already in progress, skipping...");
+      logger.debug(
+        "messages",
+        "Queue processing already in progress, skipping",
+        {
+          timestamp: Date.now(),
+        }
+      );
+      logger.debug(
+        "messages",
+        "Queue processing already in progress, skipping",
+        {
+          timestamp: Date.now(),
+        }
+      );
       return;
     }
 
     const { user } = useAuthStore.getState();
     if (!user) {
-      console.warn("Cannot process queue: User not authenticated");
+      logger.warning(
+        "messages",
+        "Cannot process queue: User not authenticated",
+        {
+          timestamp: Date.now(),
+        }
+      );
+      logger.warning(
+        "messages",
+        "Cannot process queue: User not authenticated",
+        {
+          timestamp: Date.now(),
+        }
+      );
       return;
     }
 
     const isOnline = getConnectionStatus?.()?.isOnline ?? true;
     if (!isOnline) {
-      console.log("📴 Cannot process queue: Currently offline");
+      logger.debug("messages", "Cannot process queue: Currently offline", {
+        timestamp: Date.now(),
+      });
+      logger.debug("messages", "Cannot process queue: Currently offline", {
+        timestamp: Date.now(),
+      });
       return;
     }
 
     if (!sqliteService.isInitialized()) {
-      console.warn("Cannot process queue: SQLite not initialized");
+      logger.warning(
+        "messages",
+        "Cannot process queue: SQLite not initialized",
+        {
+          timestamp: Date.now(),
+        }
+      );
+      logger.warning(
+        "messages",
+        "Cannot process queue: SQLite not initialized",
+        {
+          timestamp: Date.now(),
+        }
+      );
       return;
     }
 
@@ -543,13 +657,31 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     queueProcessingMutex = true;
 
     try {
-      console.log("🔄 Processing message queue...");
+      logger.info("messages", "Starting to process message queue", {
+        userId: user.uid,
+        timestamp: Date.now(),
+      });
+      logger.info("messages", "Starting to process message queue", {
+        userId: user.uid,
+        timestamp: Date.now(),
+      });
       // Note: Sync status will be managed by connection store callbacks
 
       const queuedMessages = await sqliteService.getQueuedMessages();
-      console.log(`📦 Found ${queuedMessages.length} queued messages`);
+      logger.info("messages", "Retrieved queued messages", {
+        queuedCount: queuedMessages.length,
+        timestamp: Date.now(),
+      });
+
+      logger.info("messages", "Retrieved queued messages", {
+        queuedCount: queuedMessages.length,
+        timestamp: Date.now(),
+      });
 
       if (queuedMessages.length === 0) {
+        logger.debug("messages", "No queued messages to process", {
+          timestamp: Date.now(),
+        });
         // Note: Sync status will be managed by connection store callbacks
         return;
       }
@@ -562,17 +694,54 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       for (let i = 0; i < queuedMessages.length; i += BATCH_SIZE) {
         const batch = queuedMessages.slice(i, i + BATCH_SIZE);
 
+        logger.debug(
+          "messages",
+          `Processing batch ${Math.floor(i / BATCH_SIZE) + 1}`,
+          {
+            batchSize: batch.length,
+            batchStart: i,
+            totalMessages: queuedMessages.length,
+            timestamp: Date.now(),
+          }
+        );
+
         for (const queued of batch) {
           try {
-            console.log(`📤 Sending queued message: ${queued.messageId}`);
+            logger.debug("messages", "Processing queued message", {
+              messageId: queued.messageId,
+              conversationId: queued.conversationId,
+              timestamp: Date.now(),
+            });
+
+            logger.debug("messages", "Processing queued message", {
+              messageId: queued.messageId,
+              conversationId: queued.conversationId,
+              timestamp: Date.now(),
+            });
 
             // Check if conversation exists before sending message
             const conversation = await conversationService.getConversation(
               queued.conversationId
             );
             if (!conversation) {
-              console.warn(
-                `⚠️ Conversation ${queued.conversationId} not found, skipping message ${queued.messageId}`
+              logger.warning(
+                "messages",
+                `Conversation ${queued.conversationId} not found, skipping message ${queued.messageId}`,
+                {
+                  conversationId: queued.conversationId,
+                  messageId: queued.messageId,
+                  timestamp: Date.now(),
+                }
+              );
+
+              logger.warning(
+                "messages",
+                "Conversation not found, skipping message",
+                {
+                  messageId: queued.messageId,
+                  conversationId: queued.conversationId,
+                  timestamp: Date.now(),
+                }
               );
 
               // Remove from queue since conversation doesn't exist
@@ -598,9 +767,26 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               continue;
             }
 
-            console.log(
-              `✅ Conversation ${queued.conversationId} found, participants:`,
-              conversation.participants
+            logger.debug(
+              "messages",
+              "Conversation found, attempting to send message",
+              {
+                messageId: queued.messageId,
+                conversationId: queued.conversationId,
+                participantCount: conversation.participants.length,
+                timestamp: Date.now(),
+              }
+            );
+
+            logger.debug(
+              "messages",
+              "Conversation found, attempting to send message",
+              {
+                messageId: queued.messageId,
+                conversationId: queued.conversationId,
+                participantCount: conversation.participants.length,
+                timestamp: Date.now(),
+              }
             );
 
             // Send to Firestore with UUID
@@ -610,6 +796,12 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               queued.senderId,
               queued.text
             );
+
+            logger.info("messages", "Queued message sent successfully", {
+              messageId: queued.messageId,
+              conversationId: queued.conversationId,
+              timestamp: Date.now(),
+            });
 
             // Save to messages table
             await sqliteService.saveMessage(message);
@@ -675,18 +867,33 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             });
 
             successCount++;
-            console.log(
-              `✅ Queued message sent successfully: ${queued.messageId}`
-            );
+            logger.info("messages", "Queued message sent successfully", {
+              messageId: queued.messageId,
+              conversationId: queued.conversationId,
+              timestamp: Date.now(),
+            });
           } catch (error) {
-            console.error(
-              `❌ Failed to send queued message: ${queued.messageId}`,
-              error
-            );
-
-            // Update retry count
             const errorMessage =
               error instanceof Error ? error.message : String(error);
+            logger.error("messages", "Failed to send queued message", {
+              messageId: queued.messageId,
+              conversationId: queued.conversationId,
+              error: errorMessage,
+              errorType:
+                error instanceof Error ? error.constructor.name : typeof error,
+              timestamp: Date.now(),
+            });
+
+            logger.error("messages", "Failed to send queued message", {
+              messageId: queued.messageId,
+              conversationId: queued.conversationId,
+              error: errorMessage,
+              errorType:
+                error instanceof Error ? error.constructor.name : typeof error,
+              timestamp: Date.now(),
+            });
+
+            // Update retry count
             await sqliteService.updateQueuedMessageRetry(
               queued.messageId,
               errorMessage
@@ -718,14 +925,17 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       const remainingQueued = await sqliteService.getQueuedMessages();
       // Note: Queue counts and sync stats will be managed by connection store callbacks
 
-      console.log(
-        `✅ Queue processing complete: ${successCount} sent, ${failedCount} failed`
+      logger.info(
+        "messages",
+        `Queue processing complete: ${successCount} sent, ${failedCount} failed`
       );
       // Note: Sync status will be managed by connection store callbacks
     } catch (error) {
-      console.error("Error processing queue:", error);
       const errorMessage =
         error instanceof Error ? error.message : String(error);
+      logger.error("messages", "Error processing queue", {
+        error: errorMessage,
+      });
       // Note: Error handling will be managed by connection store callbacks
     } finally {
       // Always clear the mutex
@@ -816,10 +1026,10 @@ export const setupMessagesStoreCallbacks = (
 ) => {
   // Register the sync callback
   const unsubscribeSync = registerCallback(async () => {
-    console.log("📤 Processing queued messages...");
+    logger.info("messages", "Processing queued messages");
     await useMessagesStore.getState().processQueue();
 
-    console.log("📥 Syncing missed messages...");
+    logger.info("messages", "Syncing missed messages");
     await useMessagesStore.getState().syncMissedMessages();
   });
 

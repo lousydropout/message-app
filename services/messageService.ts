@@ -1,4 +1,5 @@
 import { db } from "@/config/firebase";
+import { logger } from "@/stores/loggerStore";
 import { Message, TypingStatus } from "@/types/Message";
 import {
   collection,
@@ -35,7 +36,7 @@ class MessageService {
       // Idempotency check
       const existing = await getDoc(messageRef);
       if (existing.exists()) {
-        console.log("Message already exists, skipping:", messageId);
+        logger.info("messages", "Message already exists, skipping:", messageId);
         return { id: messageId, ...existing.data() } as Message;
       }
 
@@ -52,11 +53,15 @@ class MessageService {
       };
 
       // Use setDoc with provided UUID (not addDoc)
-      console.log(
+      logger.info(
+        "messages",
         `📤 Attempting to send message ${messageId} to conversation ${conversationId}`
       );
       await setDoc(messageRef, messageData);
-      console.log(`✅ Message ${messageId} sent successfully to Firestore`);
+      logger.info(
+        "messages",
+        `✅ Message ${messageId} sent successfully to Firestore`
+      );
 
       // Create message object with ID and current timestamp
       const currentTimestamp = new Date();
@@ -93,13 +98,15 @@ class MessageService {
         conversation.participants.forEach((participantId) => {
           if (participantId !== senderId) {
             updateData[`unreadCounts.${participantId}`] = increment(1);
-            console.log(
+            logger.info(
+              "messages",
               `[DEBUG] Incrementing unread count for participant: ${participantId} in conversation: ${conversationId}`
             );
           }
         });
 
-        console.log(
+        logger.info(
+          "messages",
           `[DEBUG] Updating conversation ${conversationId} with:`,
           updateData
         );
@@ -113,7 +120,7 @@ class MessageService {
 
       return message;
     } catch (error) {
-      console.error("Error sending message:", error);
+      logger.error("messages", "Error sending message:", error);
       throw error;
     }
   }
@@ -154,7 +161,7 @@ class MessageService {
 
       return messages;
     } catch (error) {
-      console.error("Error getting messages:", error);
+      logger.error("messages", "Error getting messages:", error);
       throw error;
     }
   }
@@ -167,7 +174,7 @@ class MessageService {
         updatedAt: serverTimestamp(),
       });
     } catch (error) {
-      console.error("Error marking message as read:", error);
+      logger.error("messages", "Error marking message as read:", error);
       throw error;
     }
   }
@@ -207,7 +214,7 @@ class MessageService {
       // Execute batch update
       await Promise.all(batch);
     } catch (error) {
-      console.error("Error marking conversation as read:", error);
+      logger.error("messages", "Error marking conversation as read:", error);
       throw error;
     }
   }
@@ -261,7 +268,11 @@ class MessageService {
         (doc) => ({ id: doc.id, ...doc.data() } as Message)
       );
     } catch (error) {
-      console.error("Error getting messages since timestamp:", error);
+      logger.error(
+        "messages",
+        "Error getting messages since timestamp:",
+        error
+      );
       throw error;
     }
   }
@@ -291,7 +302,7 @@ class MessageService {
         });
       }
     } catch (error) {
-      console.error("Error updating typing status:", error);
+      logger.error("messages", "Error updating typing status:", error);
       throw error;
     }
   }

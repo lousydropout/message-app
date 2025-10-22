@@ -1,5 +1,6 @@
 import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
+import { logger } from "@/stores/loggerStore";
 import { useMessagesStore } from "@/stores/messagesStore";
 import { Conversation } from "@/types/Conversation";
 import { User } from "@/types/User";
@@ -37,14 +38,15 @@ export function ConversationsList() {
 
   useEffect(() => {
     if (user) {
-      console.log(
+      logger.debug(
+        "conversations",
         `[DEBUG] User changed, loading conversations for: ${user.uid}`
       );
       // Load conversations and subscribe to updates
       loadConversations(user.uid);
       subscribeToConversations(user.uid);
     } else {
-      console.log(`[DEBUG] No user, clearing conversations`);
+      logger.debug("conversations", `[DEBUG] No user, clearing conversations`);
       // Clear conversations when user logs out
       // Note: The store will handle this automatically when user becomes null
     }
@@ -72,7 +74,11 @@ export function ConversationsList() {
             profiles[participantId] = profile;
           }
         } catch (error) {
-          console.error(`Error loading profile for ${participantId}:`, error);
+          logger.error(
+            "conversations",
+            `Error loading profile for ${participantId}:`,
+            error
+          );
         }
       }
 
@@ -91,7 +97,7 @@ export function ConversationsList() {
         await loadConversations(user.uid);
       }
     } catch (error) {
-      console.error("Error refreshing conversations:", error);
+      logger.error("conversations", "Error refreshing conversations:", error);
       Alert.alert("Error", "Failed to refresh conversations");
     } finally {
       setRefreshing(false);
@@ -183,7 +189,8 @@ export function ConversationsList() {
   const getUnreadCount = useCallback(
     (conversation: Conversation): number => {
       const count = conversation.unreadCounts?.[user?.uid || ""] || 0;
-      console.log(
+      logger.debug(
+        "conversations",
         `[DEBUG] Unread count for ${conversation.id} (${conversation.type}):`,
         {
           count,

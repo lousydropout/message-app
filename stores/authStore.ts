@@ -1,6 +1,7 @@
 import { auth } from "@/config/firebase";
 import authService from "@/services/authService";
 import userService from "@/services/userService";
+import { logger } from "@/stores/loggerStore";
 import { User as UserProfile } from "@/types/User";
 import { User, onAuthStateChanged } from "firebase/auth";
 import { create } from "zustand";
@@ -28,6 +29,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   async signUp(email: string, password: string, displayName: string) {
     set({ loading: true });
     try {
+      logger.info("auth", "Starting user sign up", { email, displayName });
       const authResult = await authService.signUp(email, password, displayName);
 
       // Create user profile
@@ -39,10 +41,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Fetch the created profile
       const userProfile = await userService.getUserProfile(authResult.user.uid);
 
+      logger.info("auth", "User sign up successful", {
+        userId: authResult.user.uid,
+        email: authResult.email,
+        displayName: authResult.displayName,
+      });
       set({ user: authResult.user, userProfile, loading: false });
       return authResult.user;
     } catch (error) {
-      console.error("Sign up error:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      logger.error("auth", "User sign up failed", {
+        email,
+        error: errorMessage,
+      });
       set({ loading: false });
       throw error;
     }
@@ -51,6 +63,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   async signIn(email: string, password: string) {
     set({ loading: true });
     try {
+      logger.info("auth", "Starting user sign in", { email });
       const authResult = await authService.signIn(email, password);
 
       // Check if user profile exists, create if not
@@ -64,10 +77,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         userProfile = await userService.getUserProfile(authResult.user.uid);
       }
 
+      logger.info("auth", "User sign in successful", {
+        userId: authResult.user.uid,
+        email: authResult.email,
+      });
       set({ user: authResult.user, userProfile, loading: false });
       return authResult.user;
     } catch (error) {
-      console.error("Sign in error:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      logger.error("auth", "User sign in failed", {
+        email,
+        error: errorMessage,
+      });
       set({ loading: false });
       throw error;
     }
@@ -76,10 +98,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   async logout() {
     set({ loading: true });
     try {
+      const currentUser = get().user;
+      logger.info("auth", "Starting user logout", { userId: currentUser?.uid });
       await authService.signOut();
+      logger.info("auth", "User logout successful", {
+        userId: currentUser?.uid,
+      });
       set({ user: null, userProfile: null, loading: false });
     } catch (error) {
-      console.error("Logout error:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      logger.error("auth", "User logout failed", { error: errorMessage });
       set({ loading: false });
       throw error;
     }

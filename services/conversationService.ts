@@ -1,4 +1,5 @@
 import { db } from "@/config/firebase";
+import { logger } from "@/stores/loggerStore";
 import { Conversation } from "@/types/Conversation";
 import { Message } from "@/types/Message";
 import {
@@ -37,7 +38,7 @@ class ConversationService {
       const docRef = await addDoc(this.conversationsRef, conversationData);
       return docRef.id;
     } catch (error) {
-      console.error("Error creating conversation:", error);
+      logger.error("conversations", "Error creating conversation:", error);
       throw error;
     }
   }
@@ -55,7 +56,7 @@ class ConversationService {
       }
       return null;
     } catch (error) {
-      console.error("Error getting conversation:", error);
+      logger.error("conversations", "Error getting conversation:", error);
       throw error;
     }
   }
@@ -87,7 +88,7 @@ class ConversationService {
 
       return conversations;
     } catch (error) {
-      console.error("Error getting user conversations:", error);
+      logger.error("conversations", "Error getting user conversations:", error);
       throw error;
     }
   }
@@ -119,7 +120,11 @@ class ConversationService {
       // Create new direct conversation
       return await this.createConversation([userId1, userId2], "direct");
     } catch (error) {
-      console.error("Error getting or creating direct conversation:", error);
+      logger.error(
+        "conversations",
+        "Error getting or creating direct conversation:",
+        error
+      );
       throw error;
     }
   }
@@ -129,7 +134,7 @@ class ConversationService {
       const conversationRef = doc(this.conversationsRef, conversationId);
       await updateDoc(conversationRef, data);
     } catch (error) {
-      console.error("Error updating conversation:", error);
+      logger.error("conversations", "Error updating conversation:", error);
       throw error;
     }
   }
@@ -150,7 +155,11 @@ class ConversationService {
         updatedAt: serverTimestamp(),
       });
     } catch (error) {
-      console.error("Error updating conversation last message:", error);
+      logger.error(
+        "conversations",
+        "Error updating conversation last message:",
+        error
+      );
       throw error;
     }
   }
@@ -168,14 +177,15 @@ class ConversationService {
     return onSnapshot(
       q,
       (querySnapshot) => {
-        console.log(
+        logger.debug(
+          "conversations",
           `[DEBUG] Conversation subscription received ${querySnapshot.docs.length} documents`
         );
 
         const conversations: Conversation[] = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          console.log(`[DEBUG] Conversation ${doc.id}:`, {
+          logger.debug("conversations", `[DEBUG] Conversation ${doc.id}:`, {
             type: data.type,
             name: data.name,
             participants: data.participants?.length,
@@ -196,13 +206,18 @@ class ConversationService {
           return bTime.getTime() - aTime.getTime();
         });
 
-        console.log(
+        logger.debug(
+          "conversations",
           `[DEBUG] Calling callback with ${conversations.length} sorted conversations`
         );
         callback(conversations);
       },
       (error) => {
-        console.error(`[DEBUG] Conversation subscription error:`, error);
+        logger.error(
+          "conversations",
+          `[DEBUG] Conversation subscription error:`,
+          error
+        );
         // Don't call callback on error, just log it
       }
     );
