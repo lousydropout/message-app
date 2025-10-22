@@ -166,6 +166,47 @@ class MessageService {
     }
   }
 
+  /**
+   * Get messages since a specific timestamp (for incremental sync)
+   */
+  async getMessagesSince(
+    conversationId: string,
+    lastSyncedAt: number,
+    limitCount: number = 100
+  ): Promise<Message[]> {
+    try {
+      const lastSyncedTimestamp = new Date(lastSyncedAt);
+
+      const q = query(
+        this.messagesRef,
+        where("conversationId", "==", conversationId),
+        where("updatedAt", ">", lastSyncedTimestamp),
+        orderBy("updatedAt", "desc"),
+        limit(limitCount)
+      );
+
+      const snapshot = await getDocs(q);
+      const messages = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Message[];
+
+      logger.info(
+        "messages",
+        `Retrieved ${messages.length} new messages since ${lastSyncedAt} for conversation: ${conversationId}`
+      );
+
+      return messages;
+    } catch (error) {
+      logger.error(
+        "messages",
+        "Error getting messages since timestamp:",
+        error
+      );
+      throw error;
+    }
+  }
+
   async markMessageAsRead(messageId: string, userId: string): Promise<void> {
     try {
       const messageRef = doc(this.messagesRef, messageId);
@@ -248,33 +289,6 @@ class MessageService {
 
       callback(messages);
     });
-  }
-
-  async getMessagesSince(
-    conversationId: string,
-    sinceTimestamp: number
-  ): Promise<Message[]> {
-    try {
-      const q = query(
-        this.messagesRef,
-        where("conversationId", "==", conversationId),
-        where("updatedAt", ">=", new Date(sinceTimestamp)),
-        orderBy("updatedAt", "asc"),
-        limit(100)
-      );
-
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(
-        (doc) => ({ id: doc.id, ...doc.data() } as Message)
-      );
-    } catch (error) {
-      logger.error(
-        "messages",
-        "Error getting messages since timestamp:",
-        error
-      );
-      throw error;
-    }
   }
 
   async updateTypingStatus(

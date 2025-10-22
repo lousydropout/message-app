@@ -1,4 +1,4 @@
-import { logger } from "@/stores/loggerStore";
+// Removed logger import to break require cycle - using console.log instead
 import { Conversation } from "@/types/Conversation";
 import { Log, LogLevel } from "@/types/Log";
 import { Message } from "@/types/Message";
@@ -71,18 +71,18 @@ class SQLiteService {
    */
   async initialize(): Promise<void> {
     if (this.initialized) {
-      logger.info("sqlite", "SQLite already initialized");
+      console.log("[INFO] [sqlite] SQLite already initialized");
       return;
     }
 
     try {
-      logger.info("sqlite", "Initializing SQLite database");
+      console.log("sqlite", "Initializing SQLite database");
       this.db = await SQLite.openDatabaseAsync("messageai.db");
       await this.createTables();
       this.initialized = true;
-      logger.info("sqlite", "SQLite database initialized successfully");
+      console.log("sqlite", "SQLite database initialized successfully");
     } catch (error) {
-      logger.error("sqlite", "Error initializing SQLite", {
+      console.error("sqlite", "Error initializing SQLite", {
         error: error instanceof Error ? error.message : "Unknown error",
       });
       throw error;
@@ -250,22 +250,22 @@ class SQLiteService {
         const hasTempId = tableInfo.some((col: any) => col.name === "tempId");
 
         if (hasTempId) {
-          logger.info(
+          console.log(
             "sqlite",
             "Found tempId column, clearing incompatible data and migrating schema"
           );
 
           // Clear all queued messages (they have old tempId format incompatible with UUIDs)
           await this.db.execAsync(`DELETE FROM queued_messages;`);
-          logger.info("sqlite", "Cleared incompatible queued messages");
+          console.log("sqlite", "Cleared incompatible queued messages");
 
           // Rename column
           await this.db.execAsync(`
             ALTER TABLE queued_messages RENAME COLUMN tempId TO messageId;
           `);
-          logger.info("sqlite", "Successfully renamed tempId to messageId");
+          console.log("sqlite", "Successfully renamed tempId to messageId");
         } else {
-          logger.info(
+          console.log(
             "sqlite",
             "No tempId column found, checking for incompatible data"
           );
@@ -276,21 +276,21 @@ class SQLiteService {
           );
 
           if (queuedMessages.length > 0) {
-            logger.info(
+            console.log(
               "sqlite",
               `Found ${queuedMessages.length} incompatible queued messages, clearing them`
             );
             await this.db.execAsync(
               `DELETE FROM queued_messages WHERE messageId LIKE 'temp_%';`
             );
-            logger.info("sqlite", "Cleared incompatible queued messages");
+            console.log("sqlite", "Cleared incompatible queued messages");
           } else {
-            logger.info("sqlite", "No incompatible queued messages found");
+            console.log("sqlite", "No incompatible queued messages found");
           }
         }
       } catch (error) {
         // Fallback: create new table and copy compatible data only
-        logger.info("sqlite", "Migration failed, using fallback approach");
+        console.log("sqlite", "Migration failed, using fallback approach");
         try {
           const tableInfo = await this.db.getAllAsync(
             `PRAGMA table_info(queued_messages)`
@@ -298,7 +298,7 @@ class SQLiteService {
           const hasTempId = tableInfo.some((col: any) => col.name === "tempId");
 
           if (hasTempId) {
-            logger.info(
+            console.log(
               "sqlite",
               "Creating new table with compatible data only"
             );
@@ -330,12 +330,12 @@ class SQLiteService {
             await this.db.execAsync(
               `ALTER TABLE queued_messages_new RENAME TO queued_messages;`
             );
-            logger.info(
+            console.log(
               "sqlite",
               "Fallback migration completed (incompatible data cleared)"
             );
           } else {
-            logger.info(
+            console.log(
               "sqlite",
               "No tempId column found, checking for incompatible data"
             );
@@ -346,25 +346,25 @@ class SQLiteService {
             );
 
             if (queuedMessages.length > 0) {
-              logger.info(
+              console.log(
                 "sqlite",
                 `Found ${queuedMessages.length} incompatible queued messages, clearing them`
               );
               await this.db.execAsync(
                 `DELETE FROM queued_messages WHERE messageId LIKE 'temp_%';`
               );
-              logger.info("sqlite", "Cleared incompatible queued messages");
+              console.log("sqlite", "Cleared incompatible queued messages");
             }
           }
         } catch (fallbackError) {
-          logger.info(
+          console.log(
             "sqlite",
             "Fallback migration also failed, clearing all queued messages:",
             fallbackError
           );
           // Last resort: clear all queued messages
           await this.db.execAsync(`DELETE FROM queued_messages;`);
-          logger.info("sqlite", "Cleared all queued messages as last resort");
+          console.log("sqlite", "Cleared all queued messages as last resort");
         }
       }
 
@@ -421,9 +421,9 @@ class SQLiteService {
         );
       `);
 
-      logger.info("sqlite", "All tables created successfully");
+      console.log("sqlite", "All tables created successfully");
     } catch (error) {
-      logger.error("sqlite", "Error creating tables:", error);
+      console.error("sqlite", "Error creating tables:", error);
       throw error;
     }
   }
@@ -569,6 +569,61 @@ class SQLiteService {
   // ============================================================================
 
   /**
+   * Batch save multiple messages (efficient, atomic)
+   */
+  async saveMessagesBatch(messages: Message[]): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+    if (messages.length === 0) return;
+
+    const BATCH_SIZE = 90; // 90 messages × 11 params = 990 params (SQLite safe limit)
+
+    try {
+      // Use a single transaction for the entire operation
+      await this.db.withTransactionAsync(async () => {
+        // Process in chunks to stay within SQLite parameter limits
+        for (let i = 0; i < messages.length; i += BATCH_SIZE) {
+          const batch = messages.slice(i, i + BATCH_SIZE);
+
+          // Prepare batch insert statement
+          const placeholders = batch
+            .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            .join(", ");
+
+          const sql = `INSERT OR REPLACE INTO messages 
+                       (id, conversationId, senderId, text, timestamp, readBy, status, aiFeatures, createdAt, updatedAt, syncedAt)
+                       VALUES ${placeholders}`;
+
+          // Flatten all parameters into single array
+          const params: any[] = [];
+          for (const message of batch) {
+            const sqliteMessage = this.messageToSQLite(message);
+            params.push(
+              sqliteMessage.id,
+              sqliteMessage.conversationId,
+              sqliteMessage.senderId,
+              sqliteMessage.text,
+              sqliteMessage.timestamp,
+              sqliteMessage.readBy,
+              sqliteMessage.status,
+              sqliteMessage.aiFeatures,
+              sqliteMessage.createdAt,
+              sqliteMessage.updatedAt,
+              sqliteMessage.syncedAt
+            );
+          }
+
+          await this.db!.runAsync(sql, params);
+        }
+      });
+
+      console.log("sqlite", `Batch saved ${messages.length} messages`);
+    } catch (error) {
+      console.error("sqlite", "Error batch saving messages:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Save a message to SQLite (from Firestore sync)
    */
   async saveMessage(message: Message): Promise<void> {
@@ -595,8 +650,30 @@ class SQLiteService {
         ]
       );
     } catch (error) {
-      logger.error("sqlite", "Error saving message to SQLite:", error);
+      console.error("sqlite", "Error saving message to SQLite:", error);
       throw error;
+    }
+  }
+
+  /**
+   * Get the latest message timestamp for a conversation
+   */
+  async getLatestMessageTimestamp(conversationId: string): Promise<number> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    try {
+      const rows = await this.db.getAllAsync<{ timestamp: number }>(
+        `SELECT timestamp FROM messages 
+         WHERE conversationId = ? 
+         ORDER BY timestamp DESC 
+         LIMIT 1`,
+        [conversationId]
+      );
+
+      return rows.length > 0 ? rows[0].timestamp : 0;
+    } catch (error) {
+      console.error("sqlite", "Error getting latest message timestamp:", error);
+      return 0; // Return 0 to fetch all messages if error
     }
   }
 
@@ -621,7 +698,7 @@ class SQLiteService {
 
       return rows.map((row) => this.sqliteToMessage(row));
     } catch (error) {
-      logger.error("sqlite", "Error getting messages from SQLite:", error);
+      console.error("sqlite", "Error getting messages from SQLite:", error);
       throw error;
     }
   }
@@ -662,7 +739,11 @@ class SQLiteService {
 
       return allRows.map((row) => this.sqliteToMessage(row));
     } catch (error) {
-      logger.error("sqlite", "Error getting messages around timestamp:", error);
+      console.error(
+        "sqlite",
+        "Error getting messages around timestamp:",
+        error
+      );
       throw error;
     }
   }
@@ -702,7 +783,7 @@ class SQLiteService {
       const rows = await this.db.getAllAsync<SearchResult>(sql, params);
       return rows;
     } catch (error) {
-      logger.error("sqlite", "Error searching messages:", error);
+      console.error("sqlite", "Error searching messages:", error);
       throw error;
     }
   }
@@ -717,12 +798,13 @@ class SQLiteService {
     if (!this.db) throw new Error("Database not initialized");
 
     try {
-      logger.info(
-        "sqlite",
-        `[SQLite] Loading recent messages for conversation: ${conversationId}`
-      );
       const startTime = Date.now();
+      console.log(
+        "sqlite",
+        `[SQLite] 🔍 Starting query for conversation: ${conversationId}`
+      );
 
+      const queryStartTime = Date.now();
       const rows = await this.db.getAllAsync<SQLiteMessage>(
         `SELECT * FROM messages 
          WHERE conversationId = ? 
@@ -730,13 +812,16 @@ class SQLiteService {
          LIMIT ?`,
         [conversationId, limit]
       );
-
-      logger.info(
+      const queryEndTime = Date.now();
+      console.log(
         "sqlite",
-        `[SQLite] Found ${rows.length} messages in ${Date.now() - startTime}ms`
+        `[SQLite] 📊 Query completed: ${rows.length} rows in ${
+          queryEndTime - queryStartTime
+        }ms`
       );
 
       // Optimize message conversion
+      const conversionStartTime = Date.now();
       const messages = rows.map((row) => {
         try {
           const readByParsed = JSON.parse(row.readBy);
@@ -764,7 +849,7 @@ class SQLiteService {
               : undefined,
           };
         } catch (parseError) {
-          logger.error(
+          console.error(
             "sqlite",
             `[SQLite] Error parsing message ${row.id}:`,
             parseError
@@ -784,16 +869,22 @@ class SQLiteService {
           };
         }
       });
-
-      logger.info(
+      const conversionEndTime = Date.now();
+      console.log(
         "sqlite",
-        `[SQLite] Parsed ${messages.length} messages in ${
-          Date.now() - startTime
-        }ms total`
+        `[SQLite] 🔄 Message conversion completed: ${
+          messages.length
+        } messages in ${conversionEndTime - conversionStartTime}ms`
+      );
+
+      const totalTime = Date.now() - startTime;
+      console.log(
+        "sqlite",
+        `[SQLite] ✅ Total loadRecentMessages completed in ${totalTime}ms`
       );
       return messages;
     } catch (error) {
-      logger.error("sqlite", "Error loading recent messages:", error);
+      console.error("sqlite", "Error loading recent messages:", error);
       throw error;
     }
   }
@@ -811,7 +902,39 @@ class SQLiteService {
       );
       return result.changes;
     } catch (error) {
-      logger.error("sqlite", "Error deleting old messages:", error);
+      console.error("sqlite", "Error deleting old messages:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save a message to SQLite cache (distinct from queued messages)
+   */
+  async saveMessageToCache(message: Message): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    try {
+      const sqliteMessage = this.messageToSQLite(message);
+      await this.db.runAsync(
+        `INSERT OR REPLACE INTO messages 
+         (id, conversationId, senderId, text, timestamp, readBy, status, aiFeatures, createdAt, updatedAt, syncedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          sqliteMessage.id,
+          sqliteMessage.conversationId,
+          sqliteMessage.senderId,
+          sqliteMessage.text,
+          sqliteMessage.timestamp,
+          sqliteMessage.readBy,
+          sqliteMessage.status,
+          sqliteMessage.aiFeatures,
+          sqliteMessage.createdAt,
+          sqliteMessage.updatedAt,
+          sqliteMessage.syncedAt,
+        ]
+      );
+    } catch (error) {
+      console.error("sqlite", "Error saving message to cache:", error);
       throw error;
     }
   }
@@ -849,7 +972,7 @@ class SQLiteService {
         ]
       );
     } catch (error) {
-      logger.error("sqlite", "Error saving conversation to SQLite:", error);
+      console.error("sqlite", "Error saving conversation to SQLite:", error);
       throw error;
     }
   }
@@ -861,7 +984,7 @@ class SQLiteService {
     if (!this.db) throw new Error("Database not initialized");
 
     try {
-      logger.info(
+      console.log(
         "sqlite",
         `[SQLite] Loading conversations for user: ${userId}`
       );
@@ -874,7 +997,7 @@ class SQLiteService {
          ORDER BY updatedAt DESC`
       );
 
-      logger.info(
+      console.log(
         "sqlite",
         `[SQLite] Found ${rows.length} total conversations in ${
           Date.now() - startTime
@@ -887,7 +1010,7 @@ class SQLiteService {
           const participants = JSON.parse(row.participants);
           return Array.isArray(participants) && participants.includes(userId);
         } catch (parseError) {
-          logger.error(
+          console.error(
             "sqlite",
             `[SQLite] Error parsing participants for conversation ${row.id}:`,
             parseError
@@ -896,7 +1019,7 @@ class SQLiteService {
         }
       });
 
-      logger.info(
+      console.log(
         "sqlite",
         `[SQLite] Filtered to ${
           userConversations.length
@@ -928,7 +1051,7 @@ class SQLiteService {
               : undefined,
           };
         } catch (parseError) {
-          logger.error(
+          console.error(
             "sqlite",
             `[SQLite] Error parsing conversation ${row.id}:`,
             parseError
@@ -947,7 +1070,7 @@ class SQLiteService {
         }
       });
 
-      logger.info(
+      console.log(
         "sqlite",
         `[SQLite] Parsed ${conversations.length} conversations in ${
           Date.now() - startTime
@@ -955,7 +1078,11 @@ class SQLiteService {
       );
       return conversations;
     } catch (error) {
-      logger.error("sqlite", "Error getting conversations from SQLite:", error);
+      console.error(
+        "sqlite",
+        "Error getting conversations from SQLite:",
+        error
+      );
       throw error;
     }
   }
@@ -974,7 +1101,7 @@ class SQLiteService {
 
       return row ? this.sqliteToConversation(row) : null;
     } catch (error) {
-      logger.error("sqlite", "Error getting conversation from SQLite:", error);
+      console.error("sqlite", "Error getting conversation from SQLite:", error);
       throw error;
     }
   }
@@ -1003,7 +1130,7 @@ class SQLiteService {
         [messageId, conversationId, senderId, text, now, now]
       );
     } catch (error) {
-      logger.error("sqlite", "Error queuing message:", error);
+      console.error("sqlite", "Error queuing message:", error);
       throw error;
     }
   }
@@ -1020,7 +1147,7 @@ class SQLiteService {
       );
       return rows;
     } catch (error) {
-      logger.error("sqlite", "Error getting queued messages:", error);
+      console.error("sqlite", "Error getting queued messages:", error);
       throw error;
     }
   }
@@ -1037,7 +1164,7 @@ class SQLiteService {
         [messageId]
       );
     } catch (error) {
-      logger.error("sqlite", "Error removing queued message:", error);
+      console.error("sqlite", "Error removing queued message:", error);
       throw error;
     }
   }
@@ -1059,7 +1186,7 @@ class SQLiteService {
         [Date.now(), error, messageId]
       );
     } catch (error) {
-      logger.error("sqlite", "Error updating queued message retry:", error);
+      console.error("sqlite", "Error updating queued message retry:", error);
       throw error;
     }
   }
@@ -1073,7 +1200,7 @@ class SQLiteService {
     try {
       await this.db.runAsync(`DELETE FROM queued_messages`);
     } catch (error) {
-      logger.error("sqlite", "Error clearing queued messages:", error);
+      console.error("sqlite", "Error clearing queued messages:", error);
       throw error;
     }
   }
@@ -1096,7 +1223,7 @@ class SQLiteService {
 
       return row ? JSON.parse(row.value) : null;
     } catch (error) {
-      logger.error("sqlite", "Error getting sync metadata:", error);
+      console.error("sqlite", "Error getting sync metadata:", error);
       throw error;
     }
   }
@@ -1114,7 +1241,7 @@ class SQLiteService {
         [key, JSON.stringify(value), Date.now()]
       );
     } catch (error) {
-      logger.error("sqlite", "Error setting sync metadata:", error);
+      console.error("sqlite", "Error setting sync metadata:", error);
       throw error;
     }
   }
@@ -1152,9 +1279,9 @@ class SQLiteService {
       await this.db.execAsync(`DELETE FROM conversations`);
       await this.db.execAsync(`DELETE FROM queued_messages`);
       await this.db.execAsync(`DELETE FROM sync_metadata`);
-      logger.info("sqlite", "All SQLite data cleared");
+      console.log("sqlite", "All SQLite data cleared");
     } catch (error) {
-      logger.error("sqlite", "Error clearing all data:", error);
+      console.error("sqlite", "Error clearing all data:", error);
       throw error;
     }
   }
@@ -1186,7 +1313,7 @@ class SQLiteService {
         queuedMessages: queuedCount?.count || 0,
       };
     } catch (error) {
-      logger.error("sqlite", "Error getting stats:", error);
+      console.error("sqlite", "Error getting stats:", error);
       throw error;
     }
   }
@@ -1200,7 +1327,7 @@ class SQLiteService {
       );
       return indexes.map((row) => row.name);
     } catch (error) {
-      logger.error("sqlite", "Error getting indexes:", error);
+      console.error("sqlite", "Error getting indexes:", error);
       throw error;
     }
   }
@@ -1229,7 +1356,7 @@ class SQLiteService {
         ]
       );
     } catch (error) {
-      logger.error("sqlite", "Error saving log:", error);
+      console.error("sqlite", "Error saving log:", error);
       throw error;
     }
   }
@@ -1265,7 +1392,7 @@ class SQLiteService {
         metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
       }));
     } catch (error) {
-      logger.error("sqlite", "Error getting logs:", error);
+      console.error("sqlite", "Error getting logs:", error);
       throw error;
     }
   }
@@ -1293,7 +1420,7 @@ class SQLiteService {
         metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
       }));
     } catch (error) {
-      logger.error("sqlite", "Error getting logs by category:", error);
+      console.error("sqlite", "Error getting logs by category:", error);
       throw error;
     }
   }
@@ -1310,7 +1437,7 @@ class SQLiteService {
         cutoffTime,
       ]);
     } catch (error) {
-      logger.error("sqlite", "Error clearing old logs:", error);
+      console.error("sqlite", "Error clearing old logs:", error);
       throw error;
     }
   }
@@ -1324,7 +1451,7 @@ class SQLiteService {
     try {
       await this.db.execAsync(`DELETE FROM logs`);
     } catch (error) {
-      logger.error("sqlite", "Error clearing all logs:", error);
+      console.error("sqlite", "Error clearing all logs:", error);
       throw error;
     }
   }

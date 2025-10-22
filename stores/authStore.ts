@@ -10,6 +10,7 @@ export interface AuthState {
   user: User | null;
   userProfile: UserProfile | null;
   loading: boolean;
+  logoutCallback: (() => void) | null;
   signUp: (
     email: string,
     password: string,
@@ -19,12 +20,14 @@ export interface AuthState {
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   initialize: () => () => void;
+  setLogoutCallback: (callback: () => void) => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   userProfile: null,
   loading: true,
+  logoutCallback: null,
 
   async signUp(email: string, password: string, displayName: string) {
     set({ loading: true });
@@ -100,6 +103,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const currentUser = get().user;
       logger.info("auth", "Starting user logout", { userId: currentUser?.uid });
+
+      // Clear messages store data before logout
+      const { logoutCallback } = get();
+      if (logoutCallback) {
+        logoutCallback();
+      }
+
       await authService.signOut();
       logger.info("auth", "User logout successful", {
         userId: currentUser?.uid,
@@ -119,6 +129,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!user || !userProfile) throw new Error("User not authenticated");
     await userService.updateUserProfile(user.uid, updates);
     set({ userProfile: { ...userProfile, ...updates } });
+  },
+
+  setLogoutCallback(callback: () => void) {
+    set({ logoutCallback: callback });
   },
 
   initialize() {

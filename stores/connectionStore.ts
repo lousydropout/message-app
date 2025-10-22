@@ -57,6 +57,7 @@ export interface ConnectionState {
   setError: (error: string) => void;
   clearError: () => void;
   updateQueueCounts: (queued: number, failed: number) => void;
+  refreshQueueCounts: () => Promise<void>;
   resetSyncStats: () => void;
   registerNetworkCallback: (callback: NetworkEventCallback) => () => void;
   triggerNetworkCallbacks: () => Promise<void>;
@@ -376,6 +377,28 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       queuedMessagesCount,
       failedMessagesCount,
     });
+  },
+
+  // Refresh queue counts from SQLite
+  refreshQueueCounts: async () => {
+    try {
+      const sqliteService = (await import("@/services/sqliteService")).default;
+      const queuedMessages = await sqliteService.getQueuedMessages();
+      const failedCount = queuedMessages.filter(
+        (m) => m.retryCount >= 3
+      ).length;
+
+      get().updateQueueCounts(queuedMessages.length, failedCount);
+
+      logger.info("connection", "Queue counts refreshed", {
+        queued: queuedMessages.length,
+        failed: failedCount,
+      });
+    } catch (error) {
+      logger.error("connection", "Failed to refresh queue counts", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
   },
 
   // Reset sync statistics

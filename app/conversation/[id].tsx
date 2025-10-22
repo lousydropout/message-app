@@ -1,6 +1,8 @@
 import { ConversationView } from "@/components/ConversationView";
 import conversationService from "@/services/conversationService";
+import sqliteService from "@/services/sqliteService";
 import { useAuthStore } from "@/stores/authStore";
+import { logger } from "@/stores/loggerStore";
 import { useMessagesStore } from "@/stores/messagesStore";
 import { Conversation } from "@/types/Conversation";
 import { router, useLocalSearchParams } from "expo-router";
@@ -13,7 +15,9 @@ export default function ConversationScreen() {
   const [loading, setLoading] = useState(true);
 
   const { user } = useAuthStore();
-  const { setCurrentConversation, clearSubscriptions } = useMessagesStore();
+  const { setCurrentConversation } = useMessagesStore();
+
+  logger.info("ConversationScreen", `🎬 ConversationScreen mounted for ${id}`);
 
   useEffect(() => {
     if (!id || !user) {
@@ -22,13 +26,36 @@ export default function ConversationScreen() {
     }
 
     const loadConversation = async () => {
+      const screenStartTime = Date.now();
+      logger.info(
+        "ConversationScreen",
+        `🚀 Starting conversation screen load for ${id}`
+      );
+
       try {
         setLoading(true);
+        logger.info(
+          "ConversationScreen",
+          `📡 Attempting to load conversation ${id}`
+        );
 
         // Load conversation details
-        const conversationData = await conversationService.getConversation(id);
+        const conversationLoadStartTime = Date.now();
+        logger.info(
+          "ConversationScreen",
+          `📡 About to call sqliteService.getConversation for ${id}`
+        );
+        const conversationData = await sqliteService.getConversation(id);
+        const conversationLoadEndTime = Date.now();
+        logger.info(
+          "ConversationScreen",
+          `📋 sqliteService.getConversation returned in ${
+            conversationLoadEndTime - conversationLoadStartTime
+          }ms`
+        );
 
         if (!conversationData) {
+          logger.info("ConversationScreen", `❌ Conversation ${id} not found`);
           Alert.alert("Error", "Conversation not found", [
             { text: "OK", onPress: () => router.back() },
           ]);
@@ -43,10 +70,19 @@ export default function ConversationScreen() {
           return;
         }
 
+        const stateUpdateStartTime = Date.now();
         setConversation(conversationData);
         setCurrentConversation(id);
+        const stateUpdateEndTime = Date.now();
+        logger.info(
+          "ConversationScreen",
+          `🔄 State update completed in ${
+            stateUpdateEndTime - stateUpdateStartTime
+          }ms`
+        );
 
         // Subscribe to conversation updates
+        const subscriptionStartTime = Date.now();
         const unsubscribe = conversationService.subscribeToConversation(
           id,
           (updatedConversation) => {
@@ -55,14 +91,35 @@ export default function ConversationScreen() {
             }
           }
         );
+        const subscriptionEndTime = Date.now();
+        logger.info(
+          "ConversationScreen",
+          `📡 Conversation subscription completed in ${
+            subscriptionEndTime - subscriptionStartTime
+          }ms`
+        );
+
+        const totalScreenTime = Date.now() - screenStartTime;
+        logger.info(
+          "ConversationScreen",
+          `✅ Conversation screen setup completed in ${totalScreenTime}ms`
+        );
 
         return unsubscribe;
       } catch (error) {
-        console.error("Error loading conversation:", error);
+        logger.error(
+          "ConversationScreen",
+          `❌ Error loading conversation ${id}:`,
+          error
+        );
         Alert.alert("Error", "Failed to load conversation", [
           { text: "OK", onPress: () => router.back() },
         ]);
       } finally {
+        logger.info(
+          "ConversationScreen",
+          `🔄 Setting loading to false for ${id}`
+        );
         setLoading(false);
       }
     };
@@ -70,8 +127,7 @@ export default function ConversationScreen() {
     const unsubscribePromise = loadConversation();
 
     return () => {
-      // Clean up subscriptions
-      clearSubscriptions();
+      // Clean up current conversation
       setCurrentConversation(null);
 
       // Clean up conversation subscription

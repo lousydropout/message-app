@@ -11,7 +11,7 @@ import { Unsubscribe } from "firebase/firestore";
 import { create } from "zustand";
 
 // Constants
-const MAX_MESSAGES_IN_MEMORY = 200; // Window size per conversation
+const MAX_MESSAGES_IN_MEMORY = 100; // Window size per conversation (reduced from 200)
 
 // Mutex to prevent concurrent queue processing
 let queueProcessingMutex = false;
@@ -58,7 +58,9 @@ export interface MessagesState {
   syncMissedMessages: () => Promise<void>;
   loadConversationMessages: (conversationId: string) => Promise<void>;
   unloadConversationMessages: (conversationId: string) => void;
+  syncNewMessagesForConversation: (conversationId: string) => Promise<void>;
   clearSubscriptions: () => void;
+  clearAllData: () => void;
 }
 
 export const useMessagesStore = create<MessagesState>((set, get) => ({
@@ -101,7 +103,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
     const unsubscribe = conversationService.subscribeToConversations(
       userId,
-      (conversations) => {
+      async (conversations) => {
         logger.debug(
           "messages",
           `Received ${conversations.length} conversations`,
@@ -113,7 +115,38 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             unreadCounts: c.unreadCounts,
           }))
         );
+
+        // Update conversations state
         set({ conversations });
+
+        // Save conversations to SQLite for offline access
+        for (const conversation of conversations) {
+          try {
+            await sqliteService.saveConversation(conversation);
+          } catch (error) {
+            logger.error("messages", "Failed to save conversation to SQLite", {
+              conversationId: conversation.id,
+              error: error instanceof Error ? error.message : "Unknown error",
+            });
+          }
+        }
+
+        // Background sync: For each conversation with unread messages, sync new messages
+        for (const conversation of conversations) {
+          const unreadCount = conversation.unreadCounts?.[userId] || 0;
+          if (unreadCount > 0) {
+            // Don't await - run in background
+            get()
+              .syncNewMessagesForConversation(conversation.id)
+              .catch((error) => {
+                logger.error("messages", "Background sync failed", {
+                  conversationId: conversation.id,
+                  error:
+                    error instanceof Error ? error.message : "Unknown error",
+                });
+              });
+          }
+        }
       }
     );
 
@@ -209,74 +242,102 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   subscribeToMessages(conversationId: string) {
+    const startTime = Date.now();
+    logger.info(
+      "messages",
+      `🌐 Starting Firestore subscription for ${conversationId}`
+    );
+
     const { subscriptions } = get();
 
     // Clear existing subscriptions
+    const cleanupStartTime = Date.now();
     if (subscriptions.messages) {
       subscriptions.messages();
     }
     if (subscriptions.typing) {
       subscriptions.typing();
     }
+    const cleanupEndTime = Date.now();
+    logger.info(
+      "messages",
+      `🧹 Subscription cleanup completed in ${
+        cleanupEndTime - cleanupStartTime
+      }ms`
+    );
 
     // Subscribe to messages
+    const subscriptionStartTime = Date.now();
     const messagesUnsubscribe = messageService.subscribeToMessages(
       conversationId,
       async (messages) => {
-        // First: Save ALL messages to SQLite
-        for (const msg of messages) {
-          await sqliteService.saveMessage(msg);
-        }
+        const callbackStartTime = Date.now();
+        logger.info(
+          "messages",
+          `📨 Firestore callback received ${messages.length} messages`
+        );
 
-        // Second: Update Zustand window (only most recent 200)
+        // First: Save ALL messages to SQLite
+        const sqliteSaveStartTime = Date.now();
+        await sqliteService.saveMessagesBatch(messages);
+        const sqliteSaveEndTime = Date.now();
+        logger.info(
+          "messages",
+          `💾 SQLite batch save completed in ${
+            sqliteSaveEndTime - sqliteSaveStartTime
+          }ms`
+        );
+
+        // Second: Only append NEW messages to Zustand (preserve SQLite-loaded messages)
+        const zustandUpdateStartTime = Date.now();
         set((state) => {
           const currentMessages = state.messages[conversationId] || [];
-          const mergedMessages = [...currentMessages];
 
-          for (const newMsg of messages) {
-            const existingIndex = mergedMessages.findIndex(
-              (m) => m.id === newMsg.id
-            );
+          // Find messages that are truly new (not already in current state)
+          const newMessages = messages.filter(
+            (newMsg) =>
+              !currentMessages.some(
+                (existingMsg) => existingMsg.id === newMsg.id
+              )
+          );
 
-            if (existingIndex >= 0) {
-              // Update existing message (replace in-place)
-              mergedMessages[existingIndex] = { ...newMsg, status: "sent" };
-            } else {
-              // New message - insert in correct chronological position
-              // Find the correct position based on timestamp
-              const insertIndex = mergedMessages.findIndex((msg) => {
-                const msgTime = msg.timestamp?.toDate?.() || new Date(0);
-                const newMsgTime = newMsg.timestamp?.toDate?.() || new Date(0);
-                return msgTime.getTime() < newMsgTime.getTime();
-              });
-
-              if (insertIndex === -1) {
-                // New message is older than all existing messages, add to end
-                mergedMessages.push(newMsg);
-              } else {
-                // Insert at the correct position
-                mergedMessages.splice(insertIndex, 0, newMsg);
-              }
-            }
+          if (newMessages.length === 0) {
+            // No new messages, keep current state unchanged
+            return state;
           }
 
-          // Sort all messages by timestamp to ensure correct order
-          mergedMessages.sort((a, b) => {
-            const aTime = a.timestamp?.toDate?.() || new Date(0);
-            const bTime = b.timestamp?.toDate?.() || new Date(0);
-            return bTime.getTime() - aTime.getTime(); // Newest first
-          });
+          // Merge new messages with existing ones
+          const mergedMessages = [...currentMessages, ...newMessages];
 
-          // Trim to MAX_MESSAGES_IN_MEMORY
-          const trimmed = mergedMessages.slice(0, MAX_MESSAGES_IN_MEMORY);
+          // Sort by timestamp and keep only recent messages
+          const recentMessages = mergedMessages
+            .sort((a, b) => {
+              const aTime = a.timestamp?.toDate?.() || new Date(0);
+              const bTime = b.timestamp?.toDate?.() || new Date(0);
+              return bTime.getTime() - aTime.getTime(); // Newest first
+            })
+            .slice(0, MAX_MESSAGES_IN_MEMORY);
 
           return {
             messages: {
               ...state.messages,
-              [conversationId]: trimmed,
+              [conversationId]: recentMessages,
             },
           };
         });
+        const zustandUpdateEndTime = Date.now();
+        logger.info(
+          "messages",
+          `🔄 Zustand update completed in ${
+            zustandUpdateEndTime - zustandUpdateStartTime
+          }ms`
+        );
+
+        const callbackTotalTime = Date.now() - callbackStartTime;
+        logger.info(
+          "messages",
+          `✅ Firestore callback completed in ${callbackTotalTime}ms`
+        );
       }
     );
 
@@ -300,6 +361,20 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         typing: typingUnsubscribe,
       },
     });
+
+    const subscriptionSetupEndTime = Date.now();
+    logger.info(
+      "messages",
+      `🌐 Firestore subscription setup completed in ${
+        subscriptionSetupEndTime - subscriptionStartTime
+      }ms`
+    );
+
+    const totalSubscriptionTime = Date.now() - startTime;
+    logger.info(
+      "messages",
+      `✅ subscribeToMessages completed in ${totalSubscriptionTime}ms`
+    );
   },
 
   async sendMessage(conversationId: string, text: string) {
@@ -921,15 +996,20 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         }
       }
 
-      // Update sync stats
+      // Update sync stats and queue counts
       const remainingQueued = await sqliteService.getQueuedMessages();
-      // Note: Queue counts and sync stats will be managed by connection store callbacks
+      const remainingFailed = await sqliteService
+        .getQueuedMessages()
+        .then((msgs) => msgs.filter((m) => m.retryCount >= 3).length);
+
+      // Update connection store with current queue counts
+      const { updateQueueCounts } = useConnectionStore.getState();
+      updateQueueCounts(remainingQueued.length, remainingFailed);
 
       logger.info(
         "messages",
         `Queue processing complete: ${successCount} sent, ${failedCount} failed`
       );
-      // Note: Sync status will be managed by connection store callbacks
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -955,20 +1035,56 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
       // Save ALL to SQLite
       for (const msg of newMessages) {
-        await sqliteService.saveMessage(msg);
+        await sqliteService.saveMessageToCache(msg);
       }
 
-      // Load most recent 200 into Zustand
-      const recentMessages = await sqliteService.loadRecentMessages(
-        conv.id,
-        MAX_MESSAGES_IN_MEMORY
-      );
-      set((state) => ({
-        messages: {
-          ...state.messages,
-          [conv.id]: recentMessages,
-        },
-      }));
+      // Only add NEW messages to Zustand (if conversation is loaded)
+      if (newMessages.length > 0) {
+        set((state) => {
+          const currentMessages = state.messages[conv.id] || [];
+          const mergedMessages = [...currentMessages];
+
+          for (const newMsg of newMessages) {
+            const existingIndex = mergedMessages.findIndex(
+              (m) => m.id === newMsg.id
+            );
+
+            if (existingIndex >= 0) {
+              // Update existing message
+              mergedMessages[existingIndex] = { ...newMsg, status: "sent" };
+            } else {
+              // New message - insert in correct chronological position
+              const insertIndex = mergedMessages.findIndex((msg) => {
+                const msgTime = msg.timestamp?.toDate?.() || new Date(0);
+                const newMsgTime = newMsg.timestamp?.toDate?.() || new Date(0);
+                return msgTime.getTime() < newMsgTime.getTime();
+              });
+
+              if (insertIndex === -1) {
+                mergedMessages.push(newMsg);
+              } else {
+                mergedMessages.splice(insertIndex, 0, newMsg);
+              }
+            }
+          }
+
+          // Sort and trim to MAX_MESSAGES_IN_MEMORY
+          mergedMessages.sort((a, b) => {
+            const aTime = a.timestamp?.toDate?.() || new Date(0);
+            const bTime = b.timestamp?.toDate?.() || new Date(0);
+            return bTime.getTime() - aTime.getTime();
+          });
+
+          const trimmed = mergedMessages.slice(0, MAX_MESSAGES_IN_MEMORY);
+
+          return {
+            messages: {
+              ...state.messages,
+              [conv.id]: trimmed,
+            },
+          };
+        });
+      }
 
       // Update sync timestamp to max updatedAt from batch
       if (newMessages.length > 0) {
@@ -981,20 +1097,118 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   async loadConversationMessages(conversationId: string) {
+    const startTime = Date.now();
+    logger.info(
+      "messages",
+      `🚀 Starting conversation load for ${conversationId}`
+    );
+
+    // Load recent messages from SQLite cache
+    const sqliteStartTime = Date.now();
     const messages = await sqliteService.loadRecentMessages(
       conversationId,
       MAX_MESSAGES_IN_MEMORY
     );
+    const sqliteEndTime = Date.now();
+    logger.info(
+      "messages",
+      `📱 SQLite load completed: ${messages.length} messages in ${
+        sqliteEndTime - sqliteStartTime
+      }ms`
+    );
 
+    // Add to Zustand
+    const zustandStartTime = Date.now();
     set((state) => ({
       messages: {
         ...state.messages,
         [conversationId]: messages,
       },
     }));
+    const zustandEndTime = Date.now();
+    logger.info(
+      "messages",
+      `🔄 Zustand update completed in ${zustandEndTime - zustandStartTime}ms`
+    );
+
+    // Only initialize Firestore subscription if online
+    const connectionStatus = getConnectionStatus?.();
+    if (connectionStatus?.isOnline) {
+      const firestoreStartTime = Date.now();
+      logger.info("messages", `🌐 Starting Firestore subscription (online)`);
+      get().subscribeToMessages(conversationId);
+      const firestoreEndTime = Date.now();
+      logger.info(
+        "messages",
+        `🌐 Firestore subscription initiated in ${
+          firestoreEndTime - firestoreStartTime
+        }ms`
+      );
+    } else {
+      logger.info("messages", `📴 Skipping Firestore subscription - offline`);
+    }
+
+    const totalTime = Date.now() - startTime;
+    logger.info("messages", `✅ Conversation load completed in ${totalTime}ms`);
+  },
+
+  async syncNewMessagesForConversation(conversationId: string) {
+    try {
+      // Don't sync if not online
+      const connectionStatus = getConnectionStatus?.();
+      if (!connectionStatus?.isOnline) {
+        return;
+      }
+
+      // 1. Get latest timestamp from SQLite
+      const latestTimestamp = await sqliteService.getLatestMessageTimestamp(
+        conversationId
+      );
+
+      // 2. Query Firestore for messages since that timestamp
+      const newMessages = await messageService.getMessagesSince(
+        conversationId,
+        latestTimestamp,
+        100 // Reasonable limit for background sync
+      );
+
+      if (newMessages.length === 0) {
+        return; // No new messages
+      }
+
+      // 3. Batch upsert to SQLite (deduplicated by id)
+      await sqliteService.saveMessagesBatch(newMessages);
+
+      logger.info(
+        "messages",
+        `Background synced ${newMessages.length} messages for conversation ${conversationId}`
+      );
+    } catch (error) {
+      logger.error("messages", "Failed to sync new messages", {
+        conversationId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      // Don't throw - background sync failure shouldn't break the app
+    }
   },
 
   unloadConversationMessages(conversationId: string) {
+    const { subscriptions } = get();
+
+    // Unsubscribe from Firestore listeners for this conversation
+    if (subscriptions.messages) {
+      subscriptions.messages();
+    }
+    if (subscriptions.typing) {
+      subscriptions.typing();
+    }
+
+    // Clear subscriptions
+    set({
+      subscriptions: {},
+    });
+
+    // Remove messages from Zustand
     set((state) => {
       const { [conversationId]: removed, ...rest } = state.messages;
       return { messages: rest };
@@ -1016,6 +1230,21 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
     set({
       subscriptions: {},
+    });
+  },
+
+  clearAllData() {
+    // Clear all subscriptions
+    get().clearSubscriptions();
+
+    // Clear all state
+    set({
+      conversations: [],
+      currentConversationId: null,
+      messages: {},
+      typingUsers: {},
+      loading: false,
+      sendingMessage: false,
     });
   },
 }));

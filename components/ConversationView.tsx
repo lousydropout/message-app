@@ -1,11 +1,10 @@
 import { MessageBubble } from "@/components/MessageBubble";
 import { TypingIndicator } from "@/components/TypingIndicator";
-import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
+import { logger } from "@/stores/loggerStore";
 import { useMessagesStore } from "@/stores/messagesStore";
 import { Conversation } from "@/types/Conversation";
 import { Message } from "@/types/Message";
-import { User } from "@/types/User";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import { router } from "expo-router";
@@ -31,9 +30,12 @@ export function ConversationView({
   conversationId,
   conversation,
 }: ConversationViewProps) {
+  logger.info(
+    "ConversationView",
+    `🎬 ConversationView component mounted for ${conversationId}`
+  );
   const [messageText, setMessageText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [otherParticipant, setOtherParticipant] = useState<User | null>(null);
   const [sessionUnreadMessageIds, setSessionUnreadMessageIds] = useState<
     Set<string>
   >(new Set());
@@ -50,26 +52,42 @@ export function ConversationView({
     retryMessage,
     markAsRead,
     updateTyping,
-    subscribeToMessages,
+    loadConversationMessages,
+    unloadConversationMessages,
   } = useMessagesStore();
 
   const conversationMessages = messages[conversationId] || [];
   const conversationTypingUsers = typingUsers[conversationId] || [];
 
+  // Track when messages become available
   useEffect(() => {
-    // Subscribe to messages and typing status
-    subscribeToMessages(conversationId);
-
-    // Fetch other participant's profile for direct conversations
-    if (conversation && conversation.type === "direct" && user) {
-      const otherUserId = conversation.participants.find((p) => p !== user.uid);
-      if (otherUserId) {
-        userService
-          .getUserProfile(otherUserId)
-          .then(setOtherParticipant)
-          .catch(console.error);
-      }
+    if (conversationMessages.length > 0) {
+      const messagesAvailableTime = Date.now();
+      logger.info(
+        "ConversationView",
+        `📨 Messages available: ${conversationMessages.length} messages at ${messagesAvailableTime}`
+      );
     }
+  }, [conversationMessages.length]);
+
+  useEffect(() => {
+    const startTime = Date.now();
+    logger.info(
+      "ConversationView",
+      `🚀 Starting conversation view load for ${conversationId}`
+    );
+
+    // Load cached messages and subscribe to updates
+    const loadStartTime = Date.now();
+    loadConversationMessages(conversationId).then(() => {
+      const loadEndTime = Date.now();
+      logger.info(
+        "ConversationView",
+        `📱 loadConversationMessages completed in ${
+          loadEndTime - loadStartTime
+        }ms`
+      );
+    });
 
     return () => {
       // Stop typing when component unmounts
@@ -77,14 +95,21 @@ export function ConversationView({
         updateTyping(conversationId, false);
       }
 
+      // Unload conversation messages and clean up subscriptions
+      unloadConversationMessages(conversationId);
+
       // Mark messages as read when leaving the conversation
       if (user) {
         markAsRead(conversationId, user.uid).catch((error) => {
-          console.error("Error marking conversation as read:", error);
+          logger.error(
+            "ConversationView",
+            "Error marking conversation as read:",
+            error
+          );
         });
       }
     };
-  }, [conversationId, user, conversation]);
+  }, [conversationId, user]);
 
   // Separate effect: Handle scroll positioning and mark as read
   useEffect(() => {
@@ -252,8 +277,9 @@ export function ConversationView({
         : null;
 
     const showDisplayName =
-      conversation?.type === "group" || 
-      (!previousMessage || previousMessage.senderId !== item.senderId);
+      conversation?.type === "group" ||
+      !previousMessage ||
+      previousMessage.senderId !== item.senderId;
 
     // Check if this message should show the unread indicator
     const isFirstUnread = firstUnreadOriginalIndex === originalIndex;
@@ -289,12 +315,7 @@ export function ConversationView({
     if (conversation.type === "group") {
       return conversation.name || "Group";
     } else {
-      // For direct conversations, show the other participant's display name
-      return (
-        otherParticipant?.displayName ||
-        otherParticipant?.email ||
-        "Direct Message"
-      );
+      return "Direct Message";
     }
   };
 
@@ -304,8 +325,11 @@ export function ConversationView({
     if (conversation.type === "group") {
       return `${conversation.participants.length} participants`;
     } else {
-      // For direct conversations, show the other participant's email
-      return otherParticipant?.email || "";
+      // Show typing indicator for direct conversations
+      if (conversationTypingUsers.length > 0) {
+        return "typing...";
+      }
+      return ""; // No subtitle when not typing
     }
   };
 
@@ -316,6 +340,13 @@ export function ConversationView({
       </View>
     );
   }
+
+  // Add timing around the main render
+  const renderStartTime = Date.now();
+  logger.info(
+    "ConversationView",
+    `🎨 Starting message list render with ${conversationMessages.length} messages`
+  );
 
   return (
     <SafeAreaView
@@ -350,6 +381,24 @@ export function ConversationView({
           removeClippedSubviews={false}
           ListHeaderComponent={renderTypingIndicator}
           contentContainerStyle={styles.messagesContent}
+          onContentSizeChange={() => {
+            const renderEndTime = Date.now();
+            logger.info(
+              "ConversationView",
+              `🎨 Message list render completed in ${
+                renderEndTime - renderStartTime
+              }ms`
+            );
+          }}
+          onLayout={() => {
+            const layoutEndTime = Date.now();
+            logger.info(
+              "ConversationView",
+              `📐 Message list layout completed in ${
+                layoutEndTime - renderStartTime
+              }ms`
+            );
+          }}
         />
 
         <View style={styles.inputContainer}>

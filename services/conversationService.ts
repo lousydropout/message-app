@@ -44,19 +44,68 @@ class ConversationService {
   }
 
   async getConversation(conversationId: string): Promise<Conversation | null> {
+    const methodStartTime = Date.now();
+    logger.info(
+      "conversations",
+      `🔍 getConversation called for ${conversationId}`
+    );
+
     try {
+      const docRefStartTime = Date.now();
       const docRef = doc(this.conversationsRef, conversationId);
+      const docRefEndTime = Date.now();
+      logger.info(
+        "conversations",
+        `📄 doc() call completed in ${docRefEndTime - docRefStartTime}ms`
+      );
+
+      const getDocStartTime = Date.now();
+      logger.info(
+        "conversations",
+        `🌐 About to call getDoc for ${conversationId}`
+      );
       const docSnap = await getDoc(docRef);
+      const getDocEndTime = Date.now();
+      logger.info(
+        "conversations",
+        `🌐 getDoc completed in ${getDocEndTime - getDocStartTime}ms`
+      );
 
       if (docSnap.exists()) {
-        return {
+        const dataProcessingStartTime = Date.now();
+        const result = {
           id: docSnap.id,
           ...docSnap.data(),
         } as Conversation;
+        const dataProcessingEndTime = Date.now();
+        logger.info(
+          "conversations",
+          `🔄 Data processing completed in ${
+            dataProcessingEndTime - dataProcessingStartTime
+          }ms`
+        );
+
+        const totalTime = Date.now() - methodStartTime;
+        logger.info(
+          "conversations",
+          `✅ getConversation completed successfully in ${totalTime}ms`
+        );
+        return result;
       }
+
+      const totalTime = Date.now() - methodStartTime;
+      logger.info(
+        "conversations",
+        `❌ Conversation ${conversationId} not found, completed in ${totalTime}ms`
+      );
       return null;
     } catch (error) {
-      logger.error("conversations", "Error getting conversation:", error);
+      const totalTime = Date.now() - methodStartTime;
+      logger.error(
+        "conversations",
+        `❌ Error getting conversation ${conversationId} after ${totalTime}ms:`,
+        error
+      );
       throw error;
     }
   }

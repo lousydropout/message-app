@@ -54,7 +54,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="test-sqlite"
+        name="diagnostics"
         options={{
           title: "Diagnostics",
           tabBarIcon: ({ color, size }) => (

@@ -1,7 +1,7 @@
 import { Timestamp } from "firebase/firestore";
 
 export interface Message {
-  id: string; // UUID - same ID throughout message lifecycle (UI → Queue → Firestore)
+  id: string; // UUID - generated upfront, used for idempotency throughout message lifecycle (UI → Queue → Firestore)
   conversationId: string;
   senderId: string;
   text: string;

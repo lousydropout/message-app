@@ -54,7 +54,7 @@ export default function DiagnosticsScreen() {
   // Load logs on component mount
   useEffect(() => {
     loadLogs();
-  }, [loadLogs]);
+  }, []); // Empty dependency array - only run once on mount
 
   // Helper functions for logs
   const getLogLevelColor = (level: LogLevel): string => {
@@ -113,7 +113,7 @@ export default function DiagnosticsScreen() {
     });
   };
 
-  const handleClearLogs = async () => {
+  const handleClearLogs = React.useCallback(async () => {
     try {
       await clearLogs();
       alert("All logs cleared successfully!");
@@ -122,9 +122,9 @@ export default function DiagnosticsScreen() {
         error instanceof Error ? error.message : "Unknown error";
       alert("Failed to clear logs: " + errorMessage);
     }
-  };
+  }, [clearLogs]);
 
-  const handleLoadLogs = async () => {
+  const handleLoadLogs = React.useCallback(async () => {
     try {
       await loadLogs(
         100,
@@ -135,9 +135,9 @@ export default function DiagnosticsScreen() {
         error instanceof Error ? error.message : "Unknown error";
       alert("Failed to load logs: " + errorMessage);
     }
-  };
+  }, [loadLogs, selectedLogLevel]);
 
-  const handleCopyLogs = async () => {
+  const handleCopyLogs = React.useCallback(async () => {
     try {
       const logsText = filteredLogs
         .map((log) => {
@@ -158,8 +158,8 @@ export default function DiagnosticsScreen() {
         error instanceof Error ? error.message : "Unknown error";
       Alert.alert("Error", "Failed to copy logs: " + errorMessage);
     }
-  };
-  const testInitialize = async () => {
+  }, [filteredLogs]);
+  const testInitialize = React.useCallback(async () => {
     try {
       await sqliteService.initialize();
       console.log("✅ SQLite initialized");
@@ -170,10 +170,10 @@ export default function DiagnosticsScreen() {
       console.error("❌ Initialization failed:", error);
       alert("Initialization failed: " + errorMessage);
     }
-  };
+  }, []);
 
   // Test 2: Save a test message
-  const testSaveMessage = async () => {
+  const testSaveMessage = React.useCallback(async () => {
     try {
       const messageToSave: Message = {
         id: `test_${Date.now()}`,
@@ -199,10 +199,10 @@ export default function DiagnosticsScreen() {
       console.error("❌ Save failed:", error);
       alert("Save failed: " + errorMessage);
     }
-  };
+  }, [testMessage]);
 
   // Test 3: Search messages
-  const testSearch = async () => {
+  const testSearch = React.useCallback(async () => {
     try {
       const searchResults = await sqliteService.searchMessages(searchQuery);
       setResults(searchResults);
@@ -213,10 +213,10 @@ export default function DiagnosticsScreen() {
       console.error("❌ Search failed:", error);
       alert("Search failed: " + errorMessage);
     }
-  };
+  }, [searchQuery]);
 
   // Test 4: Get database stats
-  const testGetStats = async () => {
+  const testGetStats = React.useCallback(async () => {
     try {
       const dbStats = await sqliteService.getStats();
       setStats(dbStats);
@@ -227,10 +227,10 @@ export default function DiagnosticsScreen() {
       console.error("❌ Stats failed:", error);
       alert("Stats failed: " + errorMessage);
     }
-  };
+  }, []);
 
   // Test 5: Queue a message (offline simulation)
-  const testQueueMessage = async () => {
+  const testQueueMessage = React.useCallback(async () => {
     try {
       const tempId = `temp_${Date.now()}`;
       await sqliteService.queueMessage(
@@ -250,10 +250,10 @@ export default function DiagnosticsScreen() {
       console.error("❌ Queue failed:", error);
       alert("Queue failed: " + errorMessage);
     }
-  };
+  }, [testMessage]);
 
   // Test 6: Clear all data
-  const testClearData = async () => {
+  const testClearData = React.useCallback(async () => {
     try {
       await sqliteService.clearAllData();
       console.log("✅ Data cleared");
@@ -268,10 +268,10 @@ export default function DiagnosticsScreen() {
       console.error("❌ Clear failed:", error);
       alert("Clear failed: " + errorMessage);
     }
-  };
+  }, [testGetStats]);
 
   // Test 7: Connection Store Actions
-  const testConnectionActions = () => {
+  const testConnectionActions = React.useCallback(() => {
     const {
       setOnline,
       setSyncStatus,
@@ -311,10 +311,23 @@ export default function DiagnosticsScreen() {
     }, 5000);
 
     alert("Connection store actions started - watch the status!");
-  };
+  }, []);
+
+  // Refresh queue counts
+  const refreshQueueCounts = React.useCallback(async () => {
+    try {
+      const { refreshQueueCounts } = useConnectionStore.getState();
+      await refreshQueueCounts();
+      alert("Queue counts refreshed!");
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      alert("Failed to refresh queue counts: " + errorMessage);
+    }
+  }, []);
 
   // Test 8: Helper Functions
-  const testHelperFunctions = () => {
+  const testHelperFunctions = React.useCallback(() => {
     const helpers = connectionHelpers;
 
     console.log("Should sync:", helpers.shouldSync());
@@ -326,10 +339,10 @@ export default function DiagnosticsScreen() {
     console.log("Summary:", helpers.getConnectionSummary());
 
     alert("Check console for helper function results!");
-  };
+  }, []);
 
   // Test 9: Update Database Indexes
-  const testUpdateIndexes = async () => {
+  const testUpdateIndexes = React.useCallback(async () => {
     try {
       console.log("🔄 Updating database indexes...");
 
@@ -348,10 +361,10 @@ export default function DiagnosticsScreen() {
       console.error("❌ Index update failed:", error);
       alert("Index update failed: " + errorMessage);
     }
-  };
+  }, [testGetStats]);
 
   // Test 10: Get Database Indexes
-  const testGetIndexes = async () => {
+  const testGetIndexes = React.useCallback(async () => {
     try {
       const dbIndexes = await sqliteService.getIndexes();
       setIndexes(dbIndexes);
@@ -362,7 +375,7 @@ export default function DiagnosticsScreen() {
       console.error("❌ Get indexes failed:", error);
       alert("Get indexes failed: " + errorMessage);
     }
-  };
+  }, []);
 
   return (
     <ScrollView style={styles.container}>
@@ -556,9 +569,17 @@ export default function DiagnosticsScreen() {
           title="Test Connection Actions"
           onPress={testConnectionActions}
         />
+        <Button
+          title="Refresh Queue Counts"
+          onPress={refreshQueueCounts}
+          color="blue"
+        />
         <Text style={styles.helpText}>
-          This will test manual status changes, sync states, errors, and queue
+          Test Actions: Manual status changes, sync states, errors, and queue
           counts over 6 seconds.
+        </Text>
+        <Text style={styles.helpText}>
+          Refresh Queue: Updates queue counts from SQLite database.
         </Text>
       </View>
 
