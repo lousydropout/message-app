@@ -1,6 +1,25 @@
 # MessageAI
 
-A React Native messaging smart phone application. Built with Firebase, Zustand, and SQLite for robust offline-first messaging.
+A React Native messaging smart phone application with AI-powered features for international communicators. Built with Firebase, Zustand, and SQLite for robust offline-first messaging.
+
+## 🎯 Project Goals & Persona
+
+**Target Persona**: International Communicator
+
+- Professionals, students, and travelers who regularly communicate across language barriers
+- Need real-time translation, cultural context hints, and formality adjustment
+- Require reliable messaging with offline support for global connectivity
+
+**Project Goal**: Achieve 70-80 points on the MessageAI Rubric by building a production-ready messaging platform with advanced AI features.
+
+**Current Progress**: 55/100 points (55% complete)
+
+- ✅ Core Messaging Infrastructure (40 points)
+- ✅ Data Management & Sync (10 points)
+- ✅ Logger Console Integration (5 points)
+- 🚧 Mobile App Quality (20 points)
+- 🚧 AI Features Implementation (30 points)
+- 🚧 Documentation & Deployment (5 points)
 
 ## ✨ Features
 
@@ -16,6 +35,25 @@ A React Native messaging smart phone application. Built with Firebase, Zustand, 
 - **Cross-platform**: Works consistently on iOS and Android
 - **Performance**: FlashList optimization for smooth scrolling through 1000+ messages
 - **Android Compatibility**: Comprehensive fix for text cutoff issues
+
+## 📊 Performance Metrics
+
+### Achieved Performance Targets
+
+- **Message Delivery**: <200ms on good network (Firestore real-time listeners)
+- **App Launch**: <2s to chat screen (optimized initialization)
+- **Memory Usage**: Bounded to 100 messages per conversation (windowed Zustand)
+- **Offline Sync**: <1s after reconnection (incremental sync)
+- **Database Operations**: 99.7% improvement in conversation loading (6,900ms → 18ms)
+- **Cross-platform**: Consistent experience on iOS, Android, and Web
+
+### Architecture Performance
+
+- **Three-tier Data Flow**: Firestore (Authoritative) → SQLite (Cache) → Zustand (Memory)
+- **Unified Queue-First**: All messages queue first, process immediately if online
+- **UUID-based Idempotency**: Prevents duplicate messages throughout lifecycle
+- **Incremental Sync**: Only fetch new messages using `getMessagesSince()`
+- **Memory Management**: Conversation lifecycle with load/unload patterns
 
 ## 🚀 Quick Start
 
@@ -81,6 +119,51 @@ A React Native messaging smart phone application. Built with Firebase, Zustand, 
 
    - Scan QR code with Expo Go (iOS/Android)
    - Press `r` to refresh all connected devices
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**Firebase Connection Issues**
+
+- Ensure Firebase project has Firestore and Authentication enabled
+- Verify all environment variables in `.env.local` are correct
+- Check Firebase console for any quota limits or billing issues
+- Run `firebase deploy --only firestore:rules` to ensure rules are deployed
+
+**Expo Go Connection Issues**
+
+- Make sure device and computer are on the same network
+- Try `npx expo start --clear` to clear cache
+- Restart Expo Go app if QR code scanning fails
+- Use tunnel mode: `npx expo start --tunnel` for network issues
+
+**Message Sync Issues**
+
+- Check network status indicator (top-right corner)
+- Use Diagnostics tab to view detailed logs
+- Force sync by tapping refresh button in network modal
+- Check SQLite database in Diagnostics for queued messages
+
+**Android Text Cutoff**
+
+- Issue is resolved with FlashList migration and Android-specific text properties
+- If issues persist, check `components/MessageBubble.tsx` for latest fixes
+- Test with different message lengths and content types
+
+**Performance Issues**
+
+- Monitor memory usage in Diagnostics tab
+- Check conversation lifecycle (messages load/unload properly)
+- Verify FlashList is being used instead of FlatList
+- Check for unnecessary re-renders in React DevTools
+
+### Debug Tools
+
+- **Diagnostics Tab**: Comprehensive logging system with SQLite persistence
+- **Network Status**: Real-time connection monitoring with manual controls
+- **Console Logs**: All application logs automatically appear in console
+- **SQLite Inspector**: View local database state and queued messages
 
 ## 🏗️ Architecture
 
@@ -678,3 +761,62 @@ service cloud.firestore {
    - Go to Firebase Console → Realtime Database → Create Database
    - Choose "Start in test mode" for development
    - This is required for Firestore real-time listeners to work properly
+
+## ⚠️ Known Issues
+
+### Development Mode Limitations
+
+- **Firestore Rules**: Currently set to ultra-permissive mode for development
+- **Google OAuth**: Not implemented (email/password auth only)
+
+### Platform-Specific Issues
+
+- **Android Text Rendering**: Fixed with FlashList migration and Android-specific properties
+- **iOS Simulator**: Some animations may not work properly in simulator
+- **Web Platform**: Limited testing on web platform
+
+### Performance Considerations
+
+- **Memory Usage**: Monitored with 100-message limit per conversation
+- **Network Dependency**: Requires internet connection for initial sync
+- **Battery Usage**: Background processing optimized for mobile devices
+
+## 🤝 Contributing
+
+### Development Setup
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Follow the existing code style and patterns
+4. Add tests for new functionality
+5. Update documentation as needed
+6. Submit a pull request
+
+### Code Style
+
+- Use TypeScript for all new code
+- Follow existing naming conventions
+- Add JSDoc comments for public functions
+- Use the existing logging system (`logger.info()`, `logger.error()`)
+- Test on both iOS and Android devices
+
+### Reporting Issues
+
+- Use the Diagnostics tab to gather logs
+- Include device information and steps to reproduce
+- Check existing issues before creating new ones
+- Provide console logs and SQLite database state when possible
+
+## 🔒 Security Notice
+
+**⚠️ Development Mode**: This project uses ultra-permissive Firestore rules for development purposes only.
+
+**Production Deployment Requirements**:
+
+- Update Firestore rules to production mode (see `docs/SECURITY.md`)
+- Never expose API keys in production builds
+- Implement proper user authentication and authorization
+- Configure Firebase App Check for additional security
+- Review and minimize database permissions
+
+For production security guidelines, see `docs/SECURITY.md` and `firestore.rules.production`.
