@@ -132,7 +132,90 @@ logger.warning("category", "warning message", { context: contextData });
 - `warning`: Warning conditions and recoverable errors
 - `error`: Error conditions and failures
 
-### 10. Android Text Rendering Pattern
+### 10. Authentication Debugging Pattern
+
+**Comprehensive Authentication Flow Tracking**:
+
+- Console logging throughout authentication flow for debugging
+- Error handling with proper error propagation
+- Service layer separation for cleaner error boundaries
+- Firebase configuration optimization for reliability
+
+```typescript
+// Pattern: Authentication debugging with console logging
+const handleAuth = async () => {
+  console.log("handleAuth called");
+  if (!email || !password) {
+    Alert.alert("Error", "Please enter both email and password.");
+    return;
+  }
+
+  setSubmitting(true);
+  try {
+    console.log("Starting authentication...");
+    if (isSignUp) {
+      console.log("Calling signUp...");
+      await signUp(email, password, displayName);
+    } else {
+      console.log("Calling signIn...");
+      await signIn(email, password);
+      console.log("SignIn completed successfully");
+    }
+  } catch (error: any) {
+    console.log("ERROR CAUGHT in login screen!");
+    console.log("Caught error in login screen:", {
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+    });
+    // Handle error appropriately
+  }
+};
+```
+
+**Service Layer Error Handling Pattern**:
+
+```typescript
+// Pattern: Service layer error propagation
+const authService = {
+  async signUp(email: string, password: string, displayName: string) {
+    try {
+      // Firebase authentication logic
+      return userCredential;
+    } catch (error) {
+      // Re-throw the error so it can be handled by the calling component
+      // Don't log raw Firebase errors here - they'll be handled in the UI layer
+      throw error;
+    }
+  },
+};
+```
+
+**Store Error Logging Pattern**:
+
+```typescript
+// Pattern: Enhanced error logging in stores
+const useAuthStore = create<AuthState>((set, get) => ({
+  signIn: async (email: string, password: string) => {
+    try {
+      logger.info("auth", "Starting user sign in", { email });
+      const authResult = await authService.signIn(email, password);
+      logger.info(
+        "auth",
+        "AuthStore: authService.signIn completed successfully"
+      );
+      // Handle success
+    } catch (error) {
+      logger.info("auth", "AuthStore: ERROR CAUGHT in signIn!");
+      set({ loading: false });
+      logger.info("auth", "AuthStore: Re-throwing error...");
+      throw error;
+    }
+  },
+}));
+```
+
+### 11. Android Text Rendering Pattern
 
 **Cross-platform Text Compatibility**:
 
