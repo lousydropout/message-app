@@ -301,6 +301,29 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               )
           );
 
+          // Auto-mark new messages as read if user is viewing this conversation
+          const { user } = useAuthStore.getState();
+          if (newMessages.length > 0 && user) {
+            // Mark new messages as read asynchronously (don't block state update)
+            Promise.all(
+              newMessages
+                .filter((msg) => !msg.readBy[user.uid]) // Only mark if not already read
+                .map((msg) =>
+                  messageService.markMessageAsRead(
+                    msg.id,
+                    user.uid,
+                    conversationId
+                  )
+                )
+            ).catch((error) => {
+              logger.error(
+                "messages",
+                "Error auto-marking new messages as read:",
+                error
+              );
+            });
+          }
+
           // Find existing messages that have read receipt updates
           const updatedMessages = currentMessages.map((existingMsg) => {
             const firestoreMsg = messages.find(

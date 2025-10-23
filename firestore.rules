@@ -1,9 +1,52 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Ultra permissive rules for development - allow everything
-    match /{document=**} {
-      allow read, write: if true;
+    
+    // Users can only read/write their own profile
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Friend requests - users can read their own requests
+    match /friendRequests/{requestId} {
+      allow read: if request.auth != null && 
+        (request.auth.uid == resource.data.fromUserId || 
+         request.auth.uid == resource.data.toUserId);
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.fromUserId;
+      allow update: if request.auth != null && 
+        request.auth.uid == resource.data.toUserId;
+    }
+    
+    // Conversations - only participants can access
+    match /conversations/{conversationId} {
+      allow read: if request.auth != null &&
+        resource.data.participants.hasAny([request.auth.uid]);
+      allow create: if request.auth != null &&
+        request.resource.data.participants.hasAny([request.auth.uid]);
+      allow update: if request.auth != null &&
+        resource.data.participants.hasAny([request.auth.uid]);
+      
+      // Typing indicators subcollection - only accessible by conversation participants
+      match /typing/{userId} {
+        // Everyone in the conversation can read who’s typing
+        allow read: if request.auth != null &&
+          get(/databases/$(database)/documents/conversations/$(conversationId))
+            .data.participants.hasAny([request.auth.uid]);
+
+        // Only the owner can write their own typing doc
+        allow write: if request.auth != null &&
+          request.auth.uid == userId &&
+          get(/databases/$(database)/documents/conversations/$(conversationId))
+            .data.participants.hasAny([request.auth.uid]);
+      }      
+      // Messages subcollection - inherits conversation access
+      match /messages/{messageId} {
+        allow read, write: if request.auth != null &&
+          get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+            .hasAny([request.auth.uid]);
+      }
     }
   }
 }

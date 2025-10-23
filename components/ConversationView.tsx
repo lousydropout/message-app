@@ -83,23 +83,23 @@ export function ConversationView({
           loadEndTime - loadStartTime
         }ms`
       );
+
+      // Mark messages as read when entering conversation
+      if (user) {
+        markAsRead(conversationId, user.uid).catch((error) => {
+          logger.error(
+            "ConversationView",
+            "Error marking conversation as read on entry:",
+            error
+          );
+        });
+      }
     });
 
     return () => {
       // Stop typing when component unmounts
       if (isTyping && user) {
         updateTyping(conversationId, false);
-      }
-
-      // Mark messages as read when leaving the conversation
-      if (user) {
-        markAsRead(conversationId, user.uid).catch((error) => {
-          logger.error(
-            "ConversationView",
-            "Error marking conversation as read:",
-            error
-          );
-        });
       }
 
       // Unload conversation messages and clean up subscriptions
@@ -152,8 +152,7 @@ export function ConversationView({
         }
       }
 
-      // Don't mark as read immediately - let the user see the unread indicator
-      // Messages will be marked as read when the user leaves the conversation
+      // Messages are marked as read on entry, and new messages auto-marked as they arrive
     }
   }, [conversationMessages.length, conversationId, user]);
 
@@ -286,7 +285,6 @@ export function ConversationView({
         <MessageBubble
           message={item}
           showDisplayName={showDisplayName}
-          isGroupChat={conversation?.type === "group"}
           onLongPress={handleMessageLongPress}
           onRetry={handleRetryMessage}
         />

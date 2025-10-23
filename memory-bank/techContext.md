@@ -210,7 +210,7 @@ interface FriendRequest {
   respondedAt?: Timestamp;
 }
 
-// Conversations Collection
+// Conversations Collection (with subcollections)
 interface Conversation {
   id: string;
   type: "direct" | "group";
@@ -223,31 +223,43 @@ interface Conversation {
     senderId: string;
     timestamp: Timestamp;
   };
+  unreadCounts: { [userId: string]: number };
 }
 
-// Messages Collection
+// Messages Subcollection: /conversations/{conversationId}/messages/{messageId}
 interface Message {
-  id: string;
+  id: string; // UUID - generated upfront, used for idempotency throughout message lifecycle
   conversationId: string;
   senderId: string;
   text: string;
   timestamp: Timestamp;
   readBy: { [userId: string]: Timestamp };
+  status?: "sending" | "sent" | "read" | "failed" | "queued";
   aiFeatures?: {
     translation?: string;
     culturalHints?: string[];
     formalityLevel?: "formal" | "informal" | "casual";
   };
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+// Typing Status Subcollection: /conversations/{conversationId}/typing/{userId}
+interface TypingStatus {
+  userId: string;
+  isTyping: boolean;
+  timestamp: Timestamp;
 }
 ```
 
 ### Composite Indexes
 
-- **Messages**: `conversationId` (ascending), `timestamp` (descending)
 - **Conversations**: `participants` (array-contains), `updatedAt` (descending)
 - **Users**: `email` (ascending), `displayName` (ascending)
 - **Friend Requests**: `toUserId` (ascending), `status` (ascending), `createdAt` (descending)
 - **Friends**: `status` (ascending), `addedAt` (descending)
+
+**Note**: Message indexes removed - messages are now subcollections of conversations and inherit conversation access patterns.
 
 ## SQLite Local Database Schema
 

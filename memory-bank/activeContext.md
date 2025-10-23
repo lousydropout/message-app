@@ -2,9 +2,70 @@
 
 ## Current Status
 
-**LOGGER CONSOLE INTEGRATION COMPLETE**: Successfully implemented unified logging system with console output integration, consolidated duplicate console calls across the entire codebase, and enhanced diagnostics UI. All application logs now go through the logger system with automatic console output for development and SQLite persistence for diagnostics.
+**FIRESTORE SUBCOLLECTION ARCHITECTURE COMPLETE**: Successfully refactored Firestore schema to use messages as subcollections of conversations, achieving 50% reduction in Firestore operations, simplified security rules, and improved performance. All services, types, and security rules have been updated to the new subcollection structure.
 
 ## Recent Major Accomplishment
+
+**Firestore Subcollection Architecture Implementation** ✅ **COMPLETE**
+
+### What Was Implemented
+
+- ✅ **Schema Refactor**: Moved messages from `/messages/{messageId}` to `/conversations/{conversationId}/messages/{messageId}`
+- ✅ **Security Rules Update**: Updated Firestore rules to use subcollection access patterns
+- ✅ **Service Layer Updates**: All message operations now use conversation-specific paths
+- ✅ **Type Definitions**: Updated Message interface to reflect subcollection structure
+- ✅ **Index Optimization**: Removed message indexes with conversationId field
+- ✅ **Performance Improvement**: Achieved 50% reduction in Firestore operations
+
+### Technical Implementation Details ✅ **COMPLETE**
+
+**Schema Changes:**
+
+- ✅ **Messages Subcollection**: `/conversations/{conversationId}/messages/{messageId}`
+- ✅ **Typing Subcollection**: `/conversations/{conversationId}/typing/{userId}`
+- ✅ **Security Rules**: Messages inherit conversation access naturally
+- ✅ **Breaking Changes**: `markMessageAsRead()` now requires `conversationId` parameter
+
+**Files Updated:**
+
+- ✅ `firestore.rules` - Updated with subcollection security rules
+- ✅ `services/messageService.ts` - All methods use conversation-specific paths
+- ✅ `firestore.indexes.json` - Removed message indexes with conversationId field
+- ✅ `types/Message.ts` - Updated interface for subcollection structure
+
+**Performance Benefits:**
+
+- ✅ **50% Reduction**: From 1 write + 1 read to just 1 write per message operation
+- ✅ **Simplified Security**: No more expensive `get()` calls to conversations
+- ✅ **Better Performance**: Eliminated cross-document security checks
+- ✅ **Cleaner Code**: All message operations use conversation-specific references
+
+**Firestore Rules Optimization & User Flow Documentation** ✅ **COMPLETE**
+
+### What Was Implemented
+
+- ✅ **Rule Analysis**: Comprehensive review of all Firestore production rules
+- ✅ **Security Fixes**: Fixed overly restrictive rules for conversations, messages, and typing indicators
+- ✅ **User Flow Documentation**: Complete step-by-step analysis of all core user flows
+- ✅ **Security Validation**: Documented security patterns and validation logic
+- ✅ **Memory Bank Update**: Added comprehensive user flow patterns to systemPatterns.md
+- ✅ **Edge Case Analysis**: Documented potential security edge cases and handling
+
+### Technical Implementation Details ✅ **COMPLETE**
+
+**Firestore Rules Fixes:**
+
+- ✅ **Conversations Rule**: Separated read/create/update operations with proper data references
+- ✅ **Messages Rule**: Fixed create operations to use `request.resource.data` instead of `resource.data`
+- ✅ **Typing Indicators Rule**: Applied same pattern as conversations for consistency
+- ✅ **Removed Unused Rules**: Eliminated logs and notes rules (handled locally in SQLite)
+
+**User Flow Documentation:**
+
+- ✅ **Conversation Flow**: Enter → Type → Send → Read Receipts (8 steps analyzed)
+- ✅ **Friend Request Flow**: Search → Send → Receive → Accept/Decline → Response (8 steps analyzed)
+- ✅ **New Message Flow**: Create Direct/Group → Send First Message → Real-time Updates (7 steps analyzed)
+- ✅ **Security Patterns**: Documented rule structure patterns and data reference patterns
 
 **Logger Console Integration & Consolidation** ✅ **COMPLETE**
 

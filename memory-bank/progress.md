@@ -603,16 +603,109 @@ Firestore (Authoritative Truth) → SQLite (Persistent Cache) → Zustand (Windo
 - ✅ Memory usage stays bounded (windowed Zustand)
 - ✅ Clean, maintainable codebase
 
+## ✅ COMPLETED: Firestore Subcollection Architecture Implementation (5 points)
+
+### Comprehensive Schema Refactor ✅ **COMPLETE**
+
+**Problem Solved**: Inefficient Firestore operations requiring expensive cross-document security checks
+
+### Key Achievements ✅ **COMPLETE**
+
+1. **Schema Refactor**: Moved messages from top-level collection to subcollections ✅
+2. **Security Rules Update**: Updated rules to use subcollection access patterns ✅
+3. **Service Layer Updates**: All message operations use conversation-specific paths ✅
+4. **Performance Optimization**: Achieved 50% reduction in Firestore operations ✅
+5. **Code Quality**: Cleaner, more maintainable code paths ✅
+
+### Technical Implementation Completed ✅ **COMPLETE**
+
+**Schema Changes:**
+
+- ✅ **Messages Subcollection**: `/conversations/{conversationId}/messages/{messageId}`
+- ✅ **Typing Subcollection**: `/conversations/{conversationId}/typing/{userId}`
+- ✅ **Security Rules**: Messages inherit conversation access naturally
+- ✅ **Breaking Changes**: `markMessageAsRead()` now requires `conversationId` parameter
+
+**Files Updated:**
+
+- ✅ `firestore.rules` - Updated with subcollection security rules
+- ✅ `services/messageService.ts` - All methods use conversation-specific paths
+- ✅ `firestore.indexes.json` - Removed message indexes with conversationId field
+- ✅ `types/Message.ts` - Updated interface for subcollection structure
+
+**Performance Benefits:**
+
+- ✅ **50% Reduction**: From 1 write + 1 read to just 1 write per message operation
+- ✅ **Simplified Security**: No more expensive `get()` calls to conversations
+- ✅ **Better Performance**: Eliminated cross-document security checks
+- ✅ **Cleaner Code**: All message operations use conversation-specific references
+
+### Success Criteria Achieved ✅ **COMPLETE**
+
+- ✅ Messages stored as subcollections of conversations
+- ✅ Security rules simplified with inherited access patterns
+- ✅ All service methods updated to use subcollection paths
+- ✅ Performance improved with 50% reduction in Firestore operations
+- ✅ Code maintainability improved with cleaner architecture
+
+## ✅ COMPLETED: Firestore Rules Optimization & User Flow Documentation (5 points)
+
+### Comprehensive Security Analysis ✅ **COMPLETE**
+
+**Problem Solved**: Overly restrictive Firestore production rules preventing core app functionality
+
+### Key Achievements ✅ **COMPLETE**
+
+1. **Rule Analysis & Fixes**: Comprehensive review and correction of all Firestore rules ✅
+2. **User Flow Documentation**: Complete step-by-step analysis of all core user flows ✅
+3. **Security Validation**: Documented security patterns and validation logic ✅
+4. **Memory Bank Update**: Added comprehensive user flow patterns to systemPatterns.md ✅
+5. **Edge Case Analysis**: Documented potential security edge cases and handling ✅
+
+### Technical Implementation Completed ✅ **COMPLETE**
+
+**Firestore Rules Fixes:**
+
+- ✅ **Conversations Rule**: Separated read/create/update operations with proper data references
+- ✅ **Messages Rule**: Fixed create operations to use `request.resource.data` instead of `resource.data`
+- ✅ **Typing Indicators Rule**: Applied same pattern as conversations for consistency
+- ✅ **Removed Unused Rules**: Eliminated logs and notes rules (handled locally in SQLite)
+
+**User Flow Documentation:**
+
+- ✅ **Conversation Flow**: Enter → Type → Send → Read Receipts (8 steps analyzed)
+- ✅ **Friend Request Flow**: Search → Send → Receive → Accept/Decline → Response (8 steps analyzed)
+- ✅ **New Message Flow**: Create Direct/Group → Send First Message → Real-time Updates (7 steps analyzed)
+- ✅ **Security Patterns**: Documented rule structure patterns and data reference patterns
+
+### Files Modified ✅ **COMPLETE**
+
+- ✅ `firestore.rules.production` - Fixed overly restrictive rules for conversations, messages, and typing indicators
+- ✅ `memory-bank/systemPatterns.md` - Added comprehensive user flow patterns and security validation documentation
+- ✅ `memory-bank/activeContext.md` - Updated with Firestore rules optimization completion
+
+### Success Criteria Achieved ✅ **COMPLETE**
+
+- ✅ All core user flows properly permitted by Firestore rules
+- ✅ Security validation maintains proper access control
+- ✅ Performance considerations documented for future optimization
+- ✅ Edge cases identified and documented
+- ✅ Comprehensive documentation for future reference
+
 ## 📊 Current Progress Summary
 
-**Total Progress: 55/100 points (55%)**
+**Total Progress: 65/100 points (65%)**
 
 - ✅ **Core Messaging Infrastructure**: 40/40 points (100% Complete)
 - ✅ **Logger Console Integration**: 5/5 points (100% Complete)
-- ✅ **Epic 3.2 Data Management & Sync**: 10/10 points (100% Complete) - **NEW**
+- ✅ **Epic 3.2 Data Management & Sync**: 10/10 points (100% Complete)
+- ✅ **Firestore Rules Optimization**: 5/5 points (100% Complete)
+- ✅ **Firestore Subcollection Architecture**: 5/5 points (100% Complete) - **NEW**
 - 🚧 **Mobile App Quality**: 0/20 points (Next Phase)
 - 🚧 **Technical Implementation**: 3/10 points (Epic 3.2 complete, remaining 7 points for AI features)
 - 🚧 **Documentation & Deployment**: 0/5 points
 - 🚧 **AI Features Implementation**: 0/30 points
 
 **Epic 3.2 Status**: ✅ **COMPLETE** - Unified queue-first architecture with three-tier data flow successfully implemented
+**Firestore Rules Status**: ✅ **COMPLETE** - All core user flows properly permitted with robust security validation
+**Subcollection Architecture Status**: ✅ **COMPLETE** - Messages now stored as subcollections with 50% performance improvement

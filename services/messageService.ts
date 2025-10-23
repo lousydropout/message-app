@@ -22,8 +22,6 @@ import {
 import conversationService from "./conversationService";
 
 class MessageService {
-  private messagesRef = collection(db, "messages");
-
   async sendMessage(
     messageId: string,
     conversationId: string,
@@ -31,13 +29,27 @@ class MessageService {
     text: string
   ): Promise<Message> {
     try {
-      const messageRef = doc(this.messagesRef, messageId);
+      const messageRef = doc(
+        db,
+        "conversations",
+        conversationId,
+        "messages",
+        messageId
+      );
 
       // Idempotency check
       const existing = await getDoc(messageRef);
       if (existing.exists()) {
         logger.info("messages", "Message already exists, skipping:", messageId);
         return { id: messageId, ...existing.data() } as Message;
+      }
+
+      // Fetch conversation to get participants
+      const conversation = await conversationService.getConversation(
+        conversationId
+      );
+      if (!conversation) {
+        throw new Error(`Conversation ${conversationId} not found`);
       }
 
       const messageData = {
@@ -51,6 +63,14 @@ class MessageService {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
+
+      // Debug logging
+      logger.info("messages", "📤 Message data being sent:", {
+        messageId,
+        conversationId,
+        senderId,
+        text: text.substring(0, 50) + "...",
+      });
 
       // Use setDoc with provided UUID (not addDoc)
       logger.info(
@@ -78,10 +98,7 @@ class MessageService {
         updatedAt: currentTimestamp as any,
       };
 
-      // Get conversation to access participants
-      const conversation = await conversationService.getConversation(
-        conversationId
-      );
+      // Update conversation with last message info
       if (conversation) {
         // Prepare update data for conversation
         const updateData: any = {
@@ -131,12 +148,14 @@ class MessageService {
     startAfterDoc?: DocumentSnapshot
   ): Promise<Message[]> {
     try {
-      // Temporary: Use simple query without orderBy to avoid index requirement
-      let q = query(
-        this.messagesRef,
-        where("conversationId", "==", conversationId),
-        limit(limitCount)
+      // Use conversation-specific messages collection
+      const messagesRef = collection(
+        db,
+        "conversations",
+        conversationId,
+        "messages"
       );
+      let q = query(messagesRef, limit(limitCount));
 
       if (startAfterDoc) {
         q = query(q, startAfter(startAfterDoc));
@@ -177,9 +196,15 @@ class MessageService {
     try {
       const lastSyncedTimestamp = new Date(lastSyncedAt);
 
+      // Use conversation-specific messages collection
+      const messagesRef = collection(
+        db,
+        "conversations",
+        conversationId,
+        "messages"
+      );
       const q = query(
-        this.messagesRef,
-        where("conversationId", "==", conversationId),
+        messagesRef,
         where("updatedAt", ">", lastSyncedTimestamp),
         orderBy("updatedAt", "desc"),
         limit(limitCount)
@@ -207,9 +232,19 @@ class MessageService {
     }
   }
 
-  async markMessageAsRead(messageId: string, userId: string): Promise<void> {
+  async markMessageAsRead(
+    messageId: string,
+    userId: string,
+    conversationId: string
+  ): Promise<void> {
     try {
-      const messageRef = doc(this.messagesRef, messageId);
+      const messageRef = doc(
+        db,
+        "conversations",
+        conversationId,
+        "messages",
+        messageId
+      );
       await updateDoc(messageRef, {
         [`readBy.${userId}`]: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -231,11 +266,13 @@ class MessageService {
       });
 
       // Still mark messages as read for read receipts
-      const q = query(
-        this.messagesRef,
-        where("conversationId", "==", conversationId),
-        limit(50)
+      const messagesRef = collection(
+        db,
+        "conversations",
+        conversationId,
+        "messages"
       );
+      const q = query(messagesRef, limit(50));
 
       const querySnapshot = await getDocs(q);
       const batch: Promise<void>[] = [];
@@ -264,31 +301,59 @@ class MessageService {
     conversationId: string,
     callback: (messages: Message[]) => void
   ): Unsubscribe {
-    // Temporary: Use simple query without orderBy to avoid index requirement
-    const q = query(
-      this.messagesRef,
-      where("conversationId", "==", conversationId),
-      limit(100) // Limit to prevent too much data
+    logger.info(
+      "messages",
+      `🔍 Setting up Firestore subscription for conversation: ${conversationId}`
     );
 
-    return onSnapshot(q, (querySnapshot) => {
-      const messages: Message[] = [];
-      querySnapshot.forEach((doc) => {
-        messages.push({
-          id: doc.id,
-          ...doc.data(),
-        } as Message);
-      });
+    // Use conversation-specific messages collection
+    const messagesRef = collection(
+      db,
+      "conversations",
+      conversationId,
+      "messages"
+    );
+    const q = query(messagesRef, limit(100)); // Limit to prevent too much data
 
-      // Sort on client side until index is ready
-      messages.sort((a, b) => {
-        const aTime = a.timestamp?.toDate?.() || new Date(0);
-        const bTime = b.timestamp?.toDate?.() || new Date(0);
-        return bTime.getTime() - aTime.getTime();
-      });
+    return onSnapshot(
+      q,
+      (querySnapshot) => {
+        logger.info(
+          "messages",
+          `✅ Firestore subscription success: ${querySnapshot.docs.length} messages for ${conversationId}`
+        );
 
-      callback(messages);
-    });
+        const messages: Message[] = [];
+        querySnapshot.forEach((doc) => {
+          messages.push({
+            id: doc.id,
+            ...doc.data(),
+          } as Message);
+        });
+
+        // Sort on client side until index is ready
+        messages.sort((a, b) => {
+          const aTime = a.timestamp?.toDate?.() || new Date(0);
+          const bTime = b.timestamp?.toDate?.() || new Date(0);
+          return bTime.getTime() - aTime.getTime();
+        });
+
+        callback(messages);
+      },
+      (error) => {
+        logger.error(
+          "messages",
+          `❌ Firestore subscription FAILED for conversation ${conversationId}:`,
+          {
+            error: error.message,
+            code: error.code,
+            conversationId,
+            operation: "subscribeToMessages",
+            query: "messages where conversationId == conversationId",
+          }
+        );
+      }
+    );
   }
 
   async updateTypingStatus(
@@ -325,30 +390,60 @@ class MessageService {
     conversationId: string,
     callback: (typingUsers: string[]) => void
   ): Unsubscribe {
+    logger.info(
+      "messages",
+      `🔍 Setting up typing subscription for conversation: ${conversationId}`
+    );
+
     // Temporary: Use simple query without orderBy to avoid index requirement
     const typingRef = collection(db, "conversations", conversationId, "typing");
     const q = query(typingRef, where("isTyping", "==", true));
 
-    return onSnapshot(q, (querySnapshot) => {
-      const typingUsers: string[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data() as TypingStatus;
-        if (data.isTyping) {
-          typingUsers.push(data.userId);
-        }
-      });
+    return onSnapshot(
+      q,
+      (querySnapshot) => {
+        logger.info(
+          "messages",
+          `✅ Typing subscription success: ${querySnapshot.docs.length} typing users for ${conversationId}`
+        );
 
-      // Sort by timestamp on client side if needed
-      typingUsers.sort((a, b) => {
-        const aDoc = querySnapshot.docs.find((doc) => doc.data().userId === a);
-        const bDoc = querySnapshot.docs.find((doc) => doc.data().userId === b);
-        const aTime = aDoc?.data().timestamp?.toDate?.() || new Date(0);
-        const bTime = bDoc?.data().timestamp?.toDate?.() || new Date(0);
-        return bTime.getTime() - aTime.getTime();
-      });
+        const typingUsers: string[] = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data() as TypingStatus;
+          if (data.isTyping) {
+            typingUsers.push(data.userId);
+          }
+        });
 
-      callback(typingUsers);
-    });
+        // Sort by timestamp on client side if needed
+        typingUsers.sort((a, b) => {
+          const aDoc = querySnapshot.docs.find(
+            (doc) => doc.data().userId === a
+          );
+          const bDoc = querySnapshot.docs.find(
+            (doc) => doc.data().userId === b
+          );
+          const aTime = aDoc?.data().timestamp?.toDate?.() || new Date(0);
+          const bTime = bDoc?.data().timestamp?.toDate?.() || new Date(0);
+          return bTime.getTime() - aTime.getTime();
+        });
+
+        callback(typingUsers);
+      },
+      (error) => {
+        logger.error(
+          "messages",
+          `❌ Typing subscription FAILED for conversation ${conversationId}:`,
+          {
+            error: error.message,
+            code: error.code,
+            conversationId,
+            operation: "subscribeToTypingStatus",
+            query: "typing where isTyping == true",
+          }
+        );
+      }
+    );
   }
 }
 

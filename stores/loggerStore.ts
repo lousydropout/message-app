@@ -63,11 +63,16 @@ export const useLoggerStore = create<LoggerStore>((set, get) => ({
       // Silently fail if console is unavailable
     }
 
-    // Add to in-memory store
-    set((state) => {
-      const newLogs = [logEntry, ...state.logs].slice(0, state.maxLogsInMemory);
-      return { logs: newLogs };
-    });
+    // Add to in-memory store (defer to avoid render cycle conflicts)
+    setTimeout(() => {
+      set((state) => {
+        const newLogs = [logEntry, ...state.logs].slice(
+          0,
+          state.maxLogsInMemory
+        );
+        return { logs: newLogs };
+      });
+    }, 0);
 
     // Try to save to SQLite if it's initialized
     if (sqliteService.isInitialized()) {

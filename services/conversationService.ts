@@ -18,7 +18,6 @@ import {
 
 class ConversationService {
   private conversationsRef = collection(db, "conversations");
-  private messagesRef = collection(db, "messages");
 
   async createConversation(
     participants: string[],

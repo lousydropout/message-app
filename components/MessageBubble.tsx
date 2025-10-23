@@ -28,7 +28,6 @@ export function MessageBubble({
   message,
   sender,
   showDisplayName = true,
-  isGroupChat = false,
   onLongPress,
   onRetry,
 }: MessageBubbleProps) {
@@ -125,7 +124,7 @@ export function MessageBubble({
       >
         {showDisplayName && (
           <Text style={styles.senderName}>
-            {isOwnMessage && isGroupChat
+            {isOwnMessage
               ? "You "
               : senderProfile?.displayName + " " || "Someone "}
           </Text>
@@ -151,7 +150,11 @@ export function MessageBubble({
         </View>
 
         <View style={styles.messageFooter}>
-          <Text style={styles.timestamp}>{formatTime(message.timestamp)}</Text>
+          <Text style={styles.timestamp}>
+            {/* NOTE: Adding a space here prevents the last character(s) from
+            being cut off on Android */}
+            {formatTime(message.timestamp) + " "}
+          </Text>
 
           {isOwnMessage && (
             <View style={styles.statusContainer}>
