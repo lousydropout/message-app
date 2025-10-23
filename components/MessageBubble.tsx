@@ -79,17 +79,26 @@ export function MessageBubble({
   const getMessageStatus = () => {
     if (!isOwnMessage) return null;
 
+    // Handle special statuses that don't depend on readBy
     const status = message.status;
     if (status === "sending") return "Sending...";
-    if (status === "queued") return "⏳ Queued"; // NEW
-    if (status === "sent") return "Sent";
-    if (status === "read") return "Read";
+    if (status === "queued") return "⏳ Queued";
     if (status === "failed") return "Failed - Tap to retry";
 
-    // Fallback for messages without status (legacy)
+    // Determine status based on readBy data
     const readBy = message.readBy || {};
-    const readCount = Object.keys(readBy).length;
-    return readCount <= 1 ? "Sent" : "Read";
+    const senderId = message.senderId;
+
+    // Check if anyone other than the sender has read the message
+    const otherReaders = Object.keys(readBy).filter(
+      (userId) => userId !== senderId
+    );
+
+    // If no one else has read it, it's "Sent"
+    if (otherReaders.length === 0) return "Sent";
+
+    // If others have read it, it's "Read"
+    return "Read";
   };
 
   const handleRetry = () => {
@@ -116,7 +125,9 @@ export function MessageBubble({
       >
         {showDisplayName && (
           <Text style={styles.senderName}>
-            {isOwnMessage && isGroupChat ? "You" : senderProfile?.displayName || "Someone"}
+            {isOwnMessage && isGroupChat
+              ? "You "
+              : senderProfile?.displayName + " " || "Someone "}
           </Text>
         )}
 

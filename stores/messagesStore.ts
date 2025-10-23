@@ -288,7 +288,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           }ms`
         );
 
-        // Second: Only append NEW messages to Zustand (preserve SQLite-loaded messages)
+        // Second: Update Zustand state with new messages AND read receipt updates
         const zustandUpdateStartTime = Date.now();
         set((state) => {
           const currentMessages = state.messages[conversationId] || [];
@@ -301,13 +301,44 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               )
           );
 
+          // Find existing messages that have read receipt updates
+          const updatedMessages = currentMessages.map((existingMsg) => {
+            const firestoreMsg = messages.find(
+              (msg) => msg.id === existingMsg.id
+            );
+            if (
+              firestoreMsg &&
+              JSON.stringify(firestoreMsg.readBy) !==
+                JSON.stringify(existingMsg.readBy)
+            ) {
+              // Read receipts have been updated
+              return { ...existingMsg, readBy: firestoreMsg.readBy };
+            }
+            return existingMsg;
+          });
+
           if (newMessages.length === 0) {
-            // No new messages, keep current state unchanged
-            return state;
+            // No new messages, but check if we have read receipt updates
+            const hasReadReceiptUpdates = updatedMessages.some(
+              (msg, index) => msg !== currentMessages[index]
+            );
+
+            if (!hasReadReceiptUpdates) {
+              // No updates at all, keep current state unchanged
+              return state;
+            }
+
+            // Only read receipt updates, return updated messages
+            return {
+              messages: {
+                ...state.messages,
+                [conversationId]: updatedMessages,
+              },
+            };
           }
 
           // Merge new messages with existing ones
-          const mergedMessages = [...currentMessages, ...newMessages];
+          const mergedMessages = [...updatedMessages, ...newMessages];
 
           // Sort by timestamp and keep only recent messages
           const recentMessages = mergedMessages
@@ -569,6 +600,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     try {
       await messageService.markConversationAsRead(conversationId, userId);
 
+      // Update SQLite with read status
+      if (sqliteService.isInitialized()) {
+        await sqliteService.markConversationAsRead(conversationId, userId);
+      }
+
       // Update local state to reflect read status
       set((state) => ({
         messages: {
@@ -580,8 +616,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
                 ...message.readBy,
                 [userId]: new Date() as any, // Mark as read locally
               },
-              // Update status to 'read' if this user is not the sender
-              status: message.senderId !== userId ? "read" : message.status,
             })) || [],
         },
       }));
@@ -591,6 +625,22 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       });
       throw error;
     }
+  },
+
+  async updateMessageReadReceipts(
+    conversationId: string,
+    messageId: string,
+    readBy: { [userId: string]: any }
+  ) {
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [conversationId]:
+          state.messages[conversationId]?.map((message) =>
+            message.id === messageId ? { ...message, readBy } : message
+          ) || [],
+      },
+    }));
   },
 
   async updateTyping(conversationId: string, isTyping: boolean) {

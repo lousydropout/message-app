@@ -36,9 +36,6 @@ export function ConversationView({
   );
   const [messageText, setMessageText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [sessionUnreadMessageIds, setSessionUnreadMessageIds] = useState<
-    Set<string>
-  >(new Set());
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flatListRef = useRef<any>(null);
 
@@ -71,7 +68,6 @@ export function ConversationView({
   }, [conversationMessages.length]);
 
   useEffect(() => {
-    const startTime = Date.now();
     logger.info(
       "ConversationView",
       `🚀 Starting conversation view load for ${conversationId}`
@@ -95,9 +91,6 @@ export function ConversationView({
         updateTyping(conversationId, false);
       }
 
-      // Unload conversation messages and clean up subscriptions
-      unloadConversationMessages(conversationId);
-
       // Mark messages as read when leaving the conversation
       if (user) {
         markAsRead(conversationId, user.uid).catch((error) => {
@@ -108,6 +101,9 @@ export function ConversationView({
           );
         });
       }
+
+      // Unload conversation messages and clean up subscriptions
+      unloadConversationMessages(conversationId);
     };
   }, [conversationId, user]);
 

@@ -1457,6 +1457,34 @@ class SQLiteService {
   }
 
   /**
+   * Mark all messages in a conversation as read by a specific user
+   */
+  async markConversationAsRead(
+    conversationId: string,
+    userId: string
+  ): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    try {
+      const currentTime = Date.now();
+
+      // Only update messages where this user hasn't read them yet
+      await this.db.runAsync(
+        `UPDATE messages 
+         SET readBy = json_set(COALESCE(readBy, '{}'), '$."${userId}"', ?),
+             updatedAt = ?,
+             syncedAt = ?
+         WHERE conversationId = ? 
+         AND (readBy IS NULL OR json_extract(readBy, '$."${userId}"') IS NULL)`,
+        [currentTime, currentTime, currentTime, conversationId]
+      );
+    } catch (error) {
+      console.error("sqlite", "Error marking conversation as read:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Check if database is initialized
    */
   isInitialized(): boolean {
