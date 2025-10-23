@@ -603,6 +603,57 @@ Firestore (Authoritative Truth) → SQLite (Persistent Cache) → Zustand (Windo
 - ✅ Memory usage stays bounded (windowed Zustand)
 - ✅ Clean, maintainable codebase
 
+## ✅ COMPLETED: Read Receipt Timing Fix Implementation (5 points)
+
+### Comprehensive UX Improvement ✅ **COMPLETE**
+
+**Problem Solved**: Read receipts were being sent when users EXIT conversations instead of when they ENTER, causing delayed/incorrect read receipt behavior
+
+### Key Achievements ✅ **COMPLETE**
+
+1. **Timing Fix**: Moved markAsRead from cleanup (exit) to initial load (entry) ✅
+2. **Auto-marking**: Added auto-mark logic for new incoming messages ✅
+3. **Real-time Behavior**: Messages marked as read immediately when user views conversation ✅
+4. **UX Improvement**: Fixed delayed/incorrect read receipt behavior ✅
+5. **Code Quality**: Cleaner, more intuitive read receipt logic ✅
+
+### Technical Implementation Completed ✅ **COMPLETE**
+
+**ConversationView.tsx Changes:**
+
+- ✅ **Removed**: `markAsRead` from cleanup function (lines 94-103)
+- ✅ **Added**: `markAsRead` call after `loadConversationMessages` completes
+- ✅ **Updated**: Comment to reflect new behavior
+- ✅ **Result**: Messages marked as read on conversation entry, not exit
+
+**messagesStore.ts Changes:**
+
+- ✅ **Added**: Auto-mark logic for new messages in subscription handler
+- ✅ **Used**: `useAuthStore.getState()` to access current user ID
+- ✅ **Filtered**: Only mark messages that aren't already read
+- ✅ **Async**: Non-blocking operation to avoid UI delays
+
+**Performance Benefits:**
+
+- ✅ **Real-time**: Other users see read receipts immediately when you view messages
+- ✅ **Proper Timing**: Read receipts appear when you're actually viewing, not when you leave
+- ✅ **Auto-marking**: New messages automatically marked as read while viewing
+- ✅ **No Duplicates**: Only marks messages that aren't already read
+
+### Files Modified ✅ **COMPLETE**
+
+- ✅ `components/ConversationView.tsx` - Move markAsRead timing from exit to entry
+- ✅ `stores/messagesStore.ts` - Add auto-mark logic for new messages
+
+### Success Criteria Achieved ✅ **COMPLETE**
+
+- ✅ Messages marked as read immediately when user enters conversation
+- ✅ New messages auto-marked as read while viewing conversation
+- ✅ Other users see read receipts appear in real-time when you view messages
+- ✅ No duplicate read receipt updates
+- ✅ Read receipts don't fire when leaving conversation
+- ✅ Proper real-time messaging behavior restored
+
 ## ✅ COMPLETED: Firestore Subcollection Architecture Implementation (5 points)
 
 ### Comprehensive Schema Refactor ✅ **COMPLETE**
@@ -694,13 +745,14 @@ Firestore (Authoritative Truth) → SQLite (Persistent Cache) → Zustand (Windo
 
 ## 📊 Current Progress Summary
 
-**Total Progress: 65/100 points (65%)**
+**Total Progress: 70/100 points (70%)**
 
 - ✅ **Core Messaging Infrastructure**: 40/40 points (100% Complete)
 - ✅ **Logger Console Integration**: 5/5 points (100% Complete)
 - ✅ **Epic 3.2 Data Management & Sync**: 10/10 points (100% Complete)
 - ✅ **Firestore Rules Optimization**: 5/5 points (100% Complete)
-- ✅ **Firestore Subcollection Architecture**: 5/5 points (100% Complete) - **NEW**
+- ✅ **Firestore Subcollection Architecture**: 5/5 points (100% Complete)
+- ✅ **Read Receipt Timing Fix**: 5/5 points (100% Complete) - **NEW**
 - 🚧 **Mobile App Quality**: 0/20 points (Next Phase)
 - 🚧 **Technical Implementation**: 3/10 points (Epic 3.2 complete, remaining 7 points for AI features)
 - 🚧 **Documentation & Deployment**: 0/5 points
@@ -709,3 +761,4 @@ Firestore (Authoritative Truth) → SQLite (Persistent Cache) → Zustand (Windo
 **Epic 3.2 Status**: ✅ **COMPLETE** - Unified queue-first architecture with three-tier data flow successfully implemented
 **Firestore Rules Status**: ✅ **COMPLETE** - All core user flows properly permitted with robust security validation
 **Subcollection Architecture Status**: ✅ **COMPLETE** - Messages now stored as subcollections with 50% performance improvement
+**Read Receipt Timing Status**: ✅ **COMPLETE** - Messages marked as read on entry with auto-marking for new messages

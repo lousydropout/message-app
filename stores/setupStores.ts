@@ -1,10 +1,11 @@
-import { useAuthStore } from "./authStore";
-import { useConnectionStore } from "./connectionStore";
-import { logger } from "./loggerStore";
+import { useAuthStore } from "@/stores/authStore";
+import { useConnectionStore } from "@/stores/connectionStore";
+import { logger } from "@/stores/loggerStore";
 import {
   setConnectionStatusGetter,
   setupMessagesStoreCallbacks,
-} from "./messagesStore";
+  useMessagesStore,
+} from "@/stores/messagesStore";
 
 // Setup function to initialize store connections
 export const setupStoreConnections = () => {
@@ -21,11 +22,8 @@ export const setupStoreConnections = () => {
   // Set up logout callback for auth store
   useAuthStore.getState().setLogoutCallback(() => {
     logger.info("stores", "Clearing messages store data on logout");
-    // Use dynamic import to avoid circular dependency
-    import("./messagesStore").then(({ useMessagesStore }) => {
-      const { clearAllData } = useMessagesStore.getState();
-      clearAllData();
-    });
+    const { clearAllData } = useMessagesStore.getState();
+    clearAllData();
   });
 
   logger.info("stores", "✅ Store connections established");

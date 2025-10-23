@@ -54,9 +54,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
+      const errorCode = (error as any)?.code || "unknown";
       logger.error("auth", "User sign up failed", {
         email,
         error: errorMessage,
+        errorCode,
       });
       set({ loading: false });
       throw error;
@@ -68,6 +70,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       logger.info("auth", "Starting user sign in", { email });
       const authResult = await authService.signIn(email, password);
+      logger.info(
+        "auth",
+        "AuthStore: authService.signIn completed successfully"
+      );
 
       // Check if user profile exists, create if not
       let userProfile = await userService.getUserProfile(authResult.user.uid);
@@ -87,13 +93,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: authResult.user, userProfile, loading: false });
       return authResult.user;
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      logger.error("auth", "User sign in failed", {
-        email,
-        error: errorMessage,
-      });
+      logger.info("auth", "AuthStore: ERROR CAUGHT in signIn!");
       set({ loading: false });
+      logger.info("auth", "AuthStore: Re-throwing error...");
       throw error;
     }
   },

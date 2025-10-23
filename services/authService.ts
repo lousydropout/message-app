@@ -41,7 +41,8 @@ const authService = {
         displayName: displayName,
       };
     } catch (error) {
-      console.error("Sign up error:", error);
+      // Re-throw the error so it can be handled by the calling component
+      // Don't log raw Firebase errors here - they'll be handled in the UI layer
       throw error;
     }
   },
@@ -63,7 +64,8 @@ const authService = {
         displayName: userCredential.user.displayName || email.split("@")[0],
       };
     } catch (error) {
-      console.error("Sign in error:", error);
+      // Re-throw the error so it can be handled by the calling component
+      // Don't log raw Firebase errors here - they'll be handled in the UI layer
       throw error;
     }
   },

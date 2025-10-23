@@ -29,6 +29,7 @@ export default function LoginScreen() {
   const passwordRef = React.useRef<TextInput>(null);
 
   const handleAuth = async () => {
+    console.log("handleAuth called");
     if (!email || !password) {
       Alert.alert("Error", "Please enter both email and password.");
       return;
@@ -41,32 +42,28 @@ export default function LoginScreen() {
 
     setSubmitting(true);
     try {
+      console.log("Starting authentication...");
       if (isSignUp) {
+        console.log("Calling signUp...");
         await signUp(email, password, displayName);
         Alert.alert("Success", "Account created successfully!");
       } else {
+        console.log("Calling signIn...");
         await signIn(email, password);
+        console.log("SignIn completed successfully");
       }
       // Navigation will be handled by the auth state change in _layout.tsx
       router.replace("/(tabs)");
     } catch (error: any) {
-      console.error("Auth error:", error);
+      console.log("ERROR CAUGHT in login screen!");
+      // Debug: Log the error details
+      console.log("Caught error in login screen:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+
       let errorMessage = "Authentication failed. Please try again.";
-
-      if (error.code === "auth/email-already-in-use") {
-        errorMessage =
-          "This email is already registered. Please sign in instead.";
-      } else if (error.code === "auth/user-not-found") {
-        errorMessage =
-          "No account found with this email. Please sign up first.";
-      } else if (error.code === "auth/wrong-password") {
-        errorMessage = "Incorrect password. Please try again.";
-      } else if (error.code === "auth/weak-password") {
-        errorMessage = "Password should be at least 6 characters.";
-      } else if (error.code === "auth/invalid-email") {
-        errorMessage = "Please enter a valid email address.";
-      }
-
       Alert.alert("Authentication Failed", errorMessage);
     } finally {
       setSubmitting(false);

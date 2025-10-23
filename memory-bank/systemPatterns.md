@@ -23,7 +23,7 @@
 
 ## Key Design Patterns
 
-### 1. Real-time Messaging Pattern (Subcollection Architecture)
+### 1. Real-time Messaging Pattern (Subcollection Architecture + Read Receipt Timing)
 
 **Firestore Subcollection Real-time Listeners** (Current Implementation):
 
@@ -33,6 +33,8 @@
 - Real-time typing indicators via `/conversations/{conversationId}/typing/{userId}` subcollections
 - Read receipts tracking via Firestore document updates
 - **50% reduction in Firestore operations** compared to top-level message collection
+- **Proper Read Receipt Timing**: Messages marked as read on conversation entry, not exit
+- **Auto-marking**: New incoming messages automatically marked as read while viewing
 
 **Architecture Benefits:**
 
@@ -40,6 +42,8 @@
 - Better performance (inherited conversation access)
 - Cleaner code paths (conversation-specific message references)
 - Reduced Firestore costs (fewer read operations)
+- Real-time read receipt behavior (immediate feedback to other users)
+- Intuitive UX (read receipts appear when actually viewing messages)
 
 ### 2. State Management Pattern
 

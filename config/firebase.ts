@@ -2,8 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { initializeApp } from "firebase/app";
 // @ts-ignore
 import { getReactNativePersistence, initializeAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-
+import { enableNetwork, getFirestore } from "firebase/firestore";
 // Suppress BloomFilter warnings in development
 if (__DEV__) {
   const originalConsoleWarn = console.warn;
@@ -39,10 +38,8 @@ export const db = getFirestore(app);
 // Configure Firestore settings to reduce warnings
 if (__DEV__) {
   // Enable offline persistence
-  import("firebase/firestore").then(({ enableNetwork, disableNetwork }) => {
-    // Keep network enabled for real-time features
-    enableNetwork(db);
-  });
+  // Keep network enabled for real-time features
+  enableNetwork(db);
 }
 
 export default app;

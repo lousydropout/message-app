@@ -2,9 +2,42 @@
 
 ## Current Status
 
-**FIRESTORE SUBCOLLECTION ARCHITECTURE COMPLETE**: Successfully refactored Firestore schema to use messages as subcollections of conversations, achieving 50% reduction in Firestore operations, simplified security rules, and improved performance. All services, types, and security rules have been updated to the new subcollection structure.
+**READ RECEIPT TIMING FIX COMPLETE**: Successfully fixed read receipt timing issue where messages were marked as read on conversation exit instead of entry. Messages now marked as read immediately when user enters conversation, and new incoming messages auto-marked as read while viewing. Real-time read receipt behavior now works correctly.
 
 ## Recent Major Accomplishment
+
+**Read Receipt Timing Fix Implementation** ✅ **COMPLETE**
+
+### What Was Implemented
+
+- ✅ **Timing Fix**: Moved `markAsRead` from cleanup (exit) to initial load (entry) in ConversationView
+- ✅ **Auto-marking**: Added auto-mark logic for new incoming messages in subscription handler
+- ✅ **Real-time Behavior**: Messages marked as read immediately when user views conversation
+- ✅ **UX Improvement**: Fixed delayed/incorrect read receipt behavior
+- ✅ **Code Quality**: Cleaner, more intuitive read receipt logic
+
+### Technical Implementation Details ✅ **COMPLETE**
+
+**ConversationView.tsx Changes:**
+
+- ✅ **Removed**: `markAsRead` from cleanup function (lines 94-103)
+- ✅ **Added**: `markAsRead` call after `loadConversationMessages` completes
+- ✅ **Updated**: Comment to reflect new behavior
+- ✅ **Result**: Messages marked as read on conversation entry, not exit
+
+**messagesStore.ts Changes:**
+
+- ✅ **Added**: Auto-mark logic for new messages in subscription handler
+- ✅ **Used**: `useAuthStore.getState()` to access current user ID
+- ✅ **Filtered**: Only mark messages that aren't already read
+- ✅ **Async**: Non-blocking operation to avoid UI delays
+
+**Performance Benefits:**
+
+- ✅ **Real-time**: Other users see read receipts immediately when you view messages
+- ✅ **Proper Timing**: Read receipts appear when you're actually viewing, not when you leave
+- ✅ **Auto-marking**: New messages automatically marked as read while viewing
+- ✅ **No Duplicates**: Only marks messages that aren't already read
 
 **Firestore Subcollection Architecture Implementation** ✅ **COMPLETE**
 

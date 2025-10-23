@@ -1,3 +1,4 @@
+import sqliteService from "@/services/sqliteService";
 import { logger } from "@/stores/loggerStore";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { getApp } from "firebase/app";
@@ -382,7 +383,6 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   // Refresh queue counts from SQLite
   refreshQueueCounts: async () => {
     try {
-      const sqliteService = (await import("@/services/sqliteService")).default;
       const queuedMessages = await sqliteService.getQueuedMessages();
       const failedCount = queuedMessages.filter(
         (m) => m.retryCount >= 3
