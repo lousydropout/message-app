@@ -1,10 +1,12 @@
 import { MessageBubble } from "@/components/MessageBubble";
 import { TypingIndicator } from "@/components/TypingIndicator";
+import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { logger } from "@/stores/loggerStore";
 import { useMessagesStore } from "@/stores/messagesStore";
 import { Conversation } from "@/types/Conversation";
 import { Message } from "@/types/Message";
+import { User } from "@/types/User";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import { router } from "expo-router";
@@ -12,6 +14,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   StyleSheet,
   Text,
@@ -36,6 +39,10 @@ export function ConversationView({
   );
   const [messageText, setMessageText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [participantProfiles, setParticipantProfiles] = useState<
+    Record<string, User>
+  >({});
+  const [showParticipantsModal, setShowParticipantsModal] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flatListRef = useRef<any>(null);
 
@@ -55,6 +62,39 @@ export function ConversationView({
 
   const conversationMessages = messages[conversationId] || [];
   const conversationTypingUsers = typingUsers[conversationId] || [];
+
+  // Load participant profiles for the conversation
+  useEffect(() => {
+    const loadParticipantProfiles = async () => {
+      if (!conversation || !user) return;
+
+      const allParticipantIds = new Set<string>();
+      conversation.participants.forEach((participantId) => {
+        allParticipantIds.add(participantId);
+      });
+
+      const profiles: Record<string, User> = {};
+
+      for (const participantId of allParticipantIds) {
+        try {
+          const profile = await userService.getUserProfile(participantId);
+          if (profile) {
+            profiles[participantId] = profile;
+          }
+        } catch (error) {
+          logger.error(
+            "ConversationView",
+            `Error loading profile for ${participantId}:`,
+            error
+          );
+        }
+      }
+
+      setParticipantProfiles(profiles);
+    };
+
+    loadParticipantProfiles();
+  }, [conversation, user]);
 
   // Track when messages become available
   useEffect(() => {
@@ -309,6 +349,13 @@ export function ConversationView({
     if (conversation.type === "group") {
       return conversation.name || "Group";
     } else {
+      // For direct conversations, show the other participant's name
+      const otherParticipant = conversation.participants.find(
+        (p) => p !== user?.uid
+      );
+      if (otherParticipant && participantProfiles[otherParticipant]) {
+        return participantProfiles[otherParticipant].displayName;
+      }
       return "Direct Message";
     }
   };
@@ -359,12 +406,16 @@ export function ConversationView({
           >
             <Ionicons name="arrow-back" size={24} color="#007AFF" />
           </TouchableOpacity>
-          <View style={styles.headerContent}>
+          <TouchableOpacity
+            style={styles.headerContent}
+            onPress={() => setShowParticipantsModal(true)}
+            activeOpacity={0.7}
+          >
             <Text style={styles.headerTitle}>{getConversationTitle()}</Text>
             <Text style={styles.headerSubtitle}>
               {getConversationSubtitle()}
             </Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         <FlashList
@@ -423,6 +474,69 @@ export function ConversationView({
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Participants Modal */}
+      <Modal
+        visible={showParticipantsModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowParticipantsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {conversation?.type === "group"
+                  ? "Group Members"
+                  : "Participants"}
+              </Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setShowParticipantsModal(false)}
+              >
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.participantsList}>
+              {conversation?.participants.map((participantId) => {
+                const participant = participantProfiles[participantId];
+                const isCurrentUser = participantId === user?.uid;
+
+                return (
+                  <View key={participantId} style={styles.participantItem}>
+                    <View style={styles.participantAvatar}>
+                      <Text style={styles.participantInitials}>
+                        {participant?.displayName
+                          ? participant.displayName
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .toUpperCase()
+                              .slice(0, 2)
+                          : "?"}
+                      </Text>
+                    </View>
+                    <View style={styles.participantInfo}>
+                      <Text style={styles.participantName}>
+                        {participant?.displayName || "Unknown User"}
+                      </Text>
+                      <Text style={styles.participantEmail}>
+                        {participant?.email || ""}
+                      </Text>
+                    </View>
+                    {isCurrentUser && (
+                      <View style={styles.currentUserBadge}>
+                        <Text style={styles.currentUserText}>You</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -455,6 +569,9 @@ const styles = StyleSheet.create({
   },
   headerContent: {
     flex: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
   },
   headerTitle: {
     fontSize: 18,
@@ -535,6 +652,94 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   unreadText: {
+    fontSize: 12,
+    color: "#007AFF",
+    fontWeight: "500",
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    margin: 20,
+    maxHeight: "80%",
+    minWidth: "80%",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E5EA",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#000",
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  participantsList: {
+    paddingVertical: 8,
+  },
+  participantItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F2F2F7",
+  },
+  participantAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#007AFF",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  participantInitials: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  participantInfo: {
+    flex: 1,
+  },
+  participantName: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#000",
+    marginBottom: 2,
+  },
+  participantEmail: {
+    fontSize: 14,
+    color: "#666",
+  },
+  currentUserBadge: {
+    backgroundColor: "#E8F4FD",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  currentUserText: {
     fontSize: 12,
     color: "#007AFF",
     fontWeight: "500",
