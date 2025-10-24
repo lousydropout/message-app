@@ -355,10 +355,10 @@ service cloud.firestore {
 
 ### 3. Connection Management
 
-- **WebSocket Pooling**: Reuse connections efficiently
+- **NetInfo Integration**: React Native NetInfo for network state detection
 - **Automatic Reconnection**: Handle network drops gracefully
 - **Connection Health**: Monitor and report connection status
-- **Fallback**: Firestore real-time as WebSocket backup
+- **Firestore Real-time**: Primary real-time messaging via Firestore listeners
 
 ## Error Handling Patterns
 

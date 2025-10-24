@@ -85,7 +85,6 @@ A React Native messaging smart phone application with AI-powered features for in
 
    - Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
    - Enable Firestore Database and Authentication (email/password)
-   - **Enable Realtime Database** (required for Firestore real-time listeners to work properly)
    - Copy `.env.template` to `.env.local` and fill in your Firebase config:
 
    ```bash
@@ -813,13 +812,6 @@ service cloud.firestore {
   "fieldOverrides": []
 }
 ```
-
-3. **Realtime Database Setup**:
-
-   - **Important**: Enable Realtime Database in your Firebase project
-   - Go to Firebase Console → Realtime Database → Create Database
-   - Choose "Start in test mode" for development
-   - This is required for Firestore real-time listeners to work properly
 
 ## ⚠️ Known Issues
 

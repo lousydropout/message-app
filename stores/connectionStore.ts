@@ -1,8 +1,6 @@
 import sqliteService from "@/services/sqliteService";
 import { logger } from "@/stores/loggerStore";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
-import { getApp } from "firebase/app";
-import { getDatabase, onValue, ref } from "firebase/database";
 import { create } from "zustand";
 
 // Connection status types
@@ -211,51 +209,10 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       });
     });
 
-    // Monitor Firebase connection state
-    let unsubscribeFirebase: (() => void) | null = null;
-    try {
-      const app = getApp();
-      const database = getDatabase(app);
-      const connectedRef = ref(database, ".info/connected");
-
-      unsubscribeFirebase = onValue(connectedRef, (snapshot) => {
-        const isFirebaseConnected = snapshot.val();
-
-        logger.info("firebase", "Firebase connection state changed", {
-          isConnected: isFirebaseConnected,
-          timestamp: Date.now(),
-        });
-
-        if (!isFirebaseConnected) {
-          logger.warning(
-            "firebase",
-            "Firebase is offline despite network being available",
-            {
-              timestamp: Date.now(),
-            }
-          );
-        }
-      });
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      logger.error(
-        "firebase",
-        "Failed to initialize Firebase connection monitoring",
-        {
-          error: errorMessage,
-          timestamp: Date.now(),
-        }
-      );
-    }
-
     // Return cleanup function
     return () => {
       unsubscribe();
       unsubscribeSync();
-      if (unsubscribeFirebase) {
-        unsubscribeFirebase();
-      }
     };
   },
 
