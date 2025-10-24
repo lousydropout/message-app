@@ -1,8 +1,10 @@
+import { db } from "@/config/firebase";
 import friendService from "@/services/friendService";
 import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { FriendRequest } from "@/types/FriendRequest";
 import { User } from "@/types/User";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { create } from "zustand";
 
 export interface ContactsState {
@@ -21,6 +23,7 @@ export interface ContactsState {
   sendRequest: (fromUserId: string, toUserId: string) => Promise<void>;
   acceptRequest: (requestId: string) => Promise<void>;
   declineRequest: (requestId: string) => Promise<void>;
+  cancelSentRequest: (requestId: string) => Promise<void>;
   blockUser: (userId: string, blockedUserId: string) => Promise<void>;
   unblockUser: (userId: string, blockedUserId: string) => Promise<void>;
   searchUsers: (searchQuery: string, currentUserId: string) => Promise<void>;
@@ -33,6 +36,12 @@ export interface ContactsState {
     userId: string,
     targetUserId: string
   ) => Promise<"stranger" | "pending" | "friend" | "blocked">;
+
+  // Real-time subscriptions
+  subscribeToFriendRequests: (userId: string) => () => void;
+  subscribeToSentRequests: (userId: string) => () => void;
+  subscribeToAcceptedRequests: (userId: string) => () => void;
+  subscribeToFriendsSubcollection: (userId: string) => () => void;
 }
 
 export const useContactsStore = create<ContactsState>((set, get) => ({
@@ -47,16 +56,8 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
   async loadFriends(userId: string) {
     set({ loading: true });
     try {
-      const friendRequests = await friendService.getFriends(userId);
-
-      // Extract user IDs from friend requests
-      const friendIds = friendRequests.map((request) =>
-        request.fromUserId === userId ? request.toUserId : request.fromUserId
-      );
-
-      // Get user profiles for friends
+      const friendIds = await friendService.getFriends(userId);
       const friends = await userService.getUsersByIds(friendIds);
-
       set({ friends, loading: false });
     } catch (error) {
       console.error("Error loading friends:", error);
@@ -139,9 +140,26 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     }
   },
 
+  async cancelSentRequest(requestId: string) {
+    try {
+      await friendService.deleteFriendRequest(requestId);
+
+      // Remove from sent requests
+      const { sentRequests } = get();
+      const updatedSentRequests = sentRequests.filter(
+        (req) => req.id !== requestId
+      );
+      set({ sentRequests: updatedSentRequests });
+    } catch (error) {
+      console.error("Error cancelling sent request:", error);
+      throw error;
+    }
+  },
+
   async blockUser(userId: string, blockedUserId: string) {
     try {
       await userService.blockUser(userId, blockedUserId);
+      await friendService.removeFriend(userId, blockedUserId);
 
       // Update local state
       const { blockedUsers } = get();
@@ -245,5 +263,112 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
       console.error("Error checking friend request status:", error);
       return "stranger";
     }
+  },
+
+  subscribeToFriendRequests: (userId: string) => {
+    const friendRequestsQuery = query(
+      collection(db, "friendRequests"),
+      where("toUserId", "==", userId),
+      where("status", "==", "pending")
+    );
+
+    const unsubscribe = onSnapshot(
+      friendRequestsQuery,
+      (snapshot) => {
+        const requests: FriendRequest[] = [];
+        snapshot.forEach((doc) => {
+          requests.push({ id: doc.id, ...doc.data() } as FriendRequest);
+        });
+        set({ friendRequests: requests });
+      },
+      (error) => {
+        console.error("Error subscribing to friend requests:", error);
+      }
+    );
+
+    return unsubscribe;
+  },
+
+  subscribeToSentRequests: (userId: string) => {
+    const sentRequestsQuery = query(
+      collection(db, "friendRequests"),
+      where("fromUserId", "==", userId),
+      where("status", "==", "pending")
+    );
+
+    const unsubscribe = onSnapshot(
+      sentRequestsQuery,
+      (snapshot) => {
+        const requests: FriendRequest[] = [];
+        snapshot.forEach((doc) => {
+          requests.push({ id: doc.id, ...doc.data() } as FriendRequest);
+        });
+        set({ sentRequests: requests });
+      },
+      (error) => {
+        console.error("Error subscribing to sent requests:", error);
+      }
+    );
+
+    return unsubscribe;
+  },
+
+  subscribeToAcceptedRequests: (userId: string) => {
+    const acceptedRequestsQuery = query(
+      collection(db, "friendRequests"),
+      where("fromUserId", "==", userId),
+      where("status", "==", "accepted")
+    );
+
+    const unsubscribe = onSnapshot(
+      acceptedRequestsQuery,
+      async (snapshot) => {
+        for (const docSnapshot of snapshot.docChanges()) {
+          if (docSnapshot.type === "added" || docSnapshot.type === "modified") {
+            const requestData = docSnapshot.doc.data();
+
+            // Add the friend to the current user's friends subcollection
+            try {
+              await friendService.addFriendToSubcollection(
+                userId,
+                requestData.toUserId
+              );
+            } catch (error) {
+              console.error("Error adding friend to subcollection:", error);
+            }
+          }
+        }
+      },
+      (error) => {
+        console.error("Error subscribing to accepted requests:", error);
+      }
+    );
+
+    return unsubscribe;
+  },
+
+  subscribeToFriendsSubcollection: (userId: string) => {
+    const friendsRef = collection(db, "users", userId, "friends");
+
+    const unsubscribe = onSnapshot(
+      friendsRef,
+      async (snapshot) => {
+        // Update the friends list when the subcollection changes
+        const { loadFriends } = get();
+        try {
+          await loadFriends(userId);
+        } catch (error) {
+          console.error(
+            "Error reloading friends after subcollection change:",
+            error
+          );
+        }
+      },
+      (error) => {
+        console.error("Error subscribing to friends subcollection:", error);
+      }
+    );
+
+    return unsubscribe;
   },
 }));

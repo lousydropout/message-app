@@ -12,7 +12,7 @@ A React Native messaging smart phone application with AI-powered features for in
 
 **Project Goal**: Build a production-ready messaging platform with advanced AI features for international communicators.
 
-**Current Progress**: 75% complete
+**Current Progress**: Core messaging infrastructure complete
 
 - ✅ Core Messaging Infrastructure
 - ✅ Data Management & Sync
@@ -21,6 +21,7 @@ A React Native messaging smart phone application with AI-powered features for in
 - ✅ Firestore Subcollection Architecture
 - ✅ Read Receipt Timing Fix
 - ✅ Authentication Debugging
+- ✅ Friends Subcollection & Online Presence
 - 🚧 Mobile App Quality
 - 🚧 AI Features Implementation
 - 🚧 Documentation & Deployment
@@ -32,6 +33,7 @@ A React Native messaging smart phone application with AI-powered features for in
 - **Real-time Messaging**: Sub-200ms message delivery with Firestore onSnapshot listeners
 - **User Authentication**: Email/password authentication with comprehensive debugging and error handling
 - **Contact Management**: Friend requests, user search, contact lists, and blocking functionality
+- **Online Presence**: Real-time online status with heartbeat mechanism and app lifecycle integration
 - **Group Messaging**: Support for 3+ users in conversations with participant management
 - **Message Features**: Real-time read receipts, typing indicators, message attribution, and unread counts
 - **Offline Support**: SQLite message queuing with automatic sync on reconnection
@@ -41,6 +43,15 @@ A React Native messaging smart phone application with AI-powered features for in
 - **Android Compatibility**: Comprehensive fix for text cutoff issues
 - **Diagnostics**: Comprehensive logging system with SQLite persistence and console integration
 - **Architecture**: Unified queue-first architecture with three-tier data flow
+
+### Friends & Online Presence
+
+- **Scalable Friend Management**: O(1) friend lookups using Firestore subcollections
+- **Real-time Online Status**: See when friends are online/offline with heartbeat mechanism
+- **App Lifecycle Integration**: Automatic presence updates on background/foreground transitions
+- **Crash-Resistant Design**: 40-second timeout for reliable offline detection
+- **Audit Trail**: Complete friend request history preserved for compliance
+- **Minimal Storage**: Friend documents store only essential data, profiles cached in SQLite
 
 ## 📊 Performance Metrics
 
@@ -54,6 +65,8 @@ A React Native messaging smart phone application with AI-powered features for in
 - **Cross-platform**: Consistent experience on iOS, Android, and Web
 - **Firestore Operations**: 50% reduction with subcollection architecture
 - **Read Receipts**: Real-time behavior with proper timing (entry vs exit)
+- **Friend Management**: O(1) friend lookups with subcollection architecture
+- **Online Presence**: 30-second heartbeat with 40-second timeout for reliability
 
 ### Architecture Performance
 
@@ -62,6 +75,8 @@ A React Native messaging smart phone application with AI-powered features for in
 - **UUID-based Idempotency**: Prevents duplicate messages throughout lifecycle
 - **Incremental Sync**: Only fetch new messages using `getMessagesSince()`
 - **Memory Management**: Conversation lifecycle with load/unload patterns
+- **Scalable Friends**: Subcollection-based friend management for millions of users
+- **Presence Tracking**: Heartbeat mechanism with app lifecycle integration
 
 ## 🚀 Quick Start
 
@@ -599,28 +614,68 @@ services/                     # Business logic
 ├── authService.ts           # Authentication operations
 ├── messageService.ts        # Message CRUD operations
 ├── conversationService.ts   # Conversation management
-├── friendService.ts         # Friend request operations
+├── friendService.ts         # Friend request operations with subcollection management
+├── presenceService.ts       # Online presence and heartbeat management
 ├── userService.ts          # User profile operations
 └── sqliteService.ts        # Local database operations
 
 types/                        # TypeScript interfaces
 ├── Message.ts               # Message interface
 ├── Conversation.ts          # Conversation interface
-├── User.ts                  # User interface
+├── User.ts                  # User interface with online and heartbeat fields
+├── Friend.ts                # Friend interface for subcollection documents
 └── FriendRequest.ts         # Friend request interface
 ```
 
+## 🗄️ Data Structures
+
+### Friends Subcollection & Online Presence
+
+**New Data Architecture**:
+
+```typescript
+// User documents with presence tracking
+interface User {
+  id: string;
+  email: string;
+  displayName: string;
+  // ... existing fields
+  online: boolean; // Real-time online status
+  heartbeat: Timestamp; // Last heartbeat (30s intervals)
+}
+
+// Friends subcollection: /users/{userId}/friends/{friendId}
+interface Friend {
+  id: string; // Friend's user ID
+  addedAt: Timestamp; // When friendship was established
+}
+
+// Friend requests preserved for audit trail
+interface FriendRequest {
+  // ... existing fields (unchanged)
+}
+```
+
+**Architecture Benefits**:
+
+- **O(1) Friend Lookups**: Subcollection queries instead of O(n) collection scans
+- **Minimal Storage**: Friend documents store only essential data
+- **Audit Trail**: friendRequests collection preserved for compliance
+- **Real-time Presence**: 30-second heartbeat with 40-second timeout
+- **Scalable**: Works efficiently with millions of users
+
 ## 📱 Current Status
 
-**Total Progress: 75% complete**
+**Current Status: Core messaging infrastructure complete**
 
-- ✅ **Core Messaging Infrastructure** (100% Complete)
-- ✅ **Data Management & Sync** (100% Complete)
-- ✅ **Logger Console Integration** (100% Complete)
-- ✅ **Firestore Rules Optimization** (100% Complete)
-- ✅ **Firestore Subcollection Architecture** (100% Complete)
-- ✅ **Read Receipt Timing Fix** (100% Complete)
-- ✅ **Authentication Debugging** (100% Complete)
+- ✅ **Core Messaging Infrastructure** (Complete)
+- ✅ **Data Management & Sync** (Complete)
+- ✅ **Logger Console Integration** (Complete)
+- ✅ **Firestore Rules Optimization** (Complete)
+- ✅ **Firestore Subcollection Architecture** (Complete)
+- ✅ **Read Receipt Timing Fix** (Complete)
+- ✅ **Authentication Debugging** (Complete)
+- ✅ **Friends Subcollection & Online Presence** (Complete)
 - 🚧 **Mobile App Quality** (Next Phase)
 - 🚧 **Technical Implementation** (Epic 3.2 complete, remaining work for AI features)
 - 🚧 **Documentation & Deployment**

@@ -14,6 +14,8 @@ export interface User {
   blockedUsers: string[]; // Array of user IDs
   createdAt: Timestamp;
   lastSeen: Timestamp;
+  online: boolean;
+  heartbeat: Timestamp;
 }
 
 // Common languages for the International Communicator persona

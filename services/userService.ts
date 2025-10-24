@@ -49,6 +49,8 @@ export class UserService {
         blockedUsers: profileData.blockedUsers || [],
         createdAt: now as Timestamp,
         lastSeen: now as Timestamp,
+        online: false,
+        heartbeat: now as Timestamp,
       };
 
       // Only add avatar if it's provided

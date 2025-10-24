@@ -1,5 +1,6 @@
 import { auth } from "@/config/firebase";
 import authService from "@/services/authService";
+import presenceService from "@/services/presenceService";
 import userService from "@/services/userService";
 import { logger } from "@/stores/loggerStore";
 import { User as UserProfile } from "@/types/User";
@@ -90,6 +91,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         userId: authResult.user.uid,
         email: authResult.email,
       });
+
+      // Set online status and start heartbeat
+      await presenceService.setOnlineStatus(authResult.user.uid, true);
+      presenceService.startHeartbeat(authResult.user.uid);
+
+      // Friend requests are now loaded via real-time subscriptions in root layout
+
       set({ user: authResult.user, userProfile, loading: false });
       return authResult.user;
     } catch (error) {
@@ -105,6 +113,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const currentUser = get().user;
       logger.info("auth", "Starting user logout", { userId: currentUser?.uid });
+
+      // Set offline status and stop heartbeat
+      if (currentUser) {
+        await presenceService.setOnlineStatus(currentUser.uid, false);
+        presenceService.stopHeartbeat();
+      }
+
+      // Friend requests are cleared via root layout subscription cleanup
 
       // Clear messages store data before logout
       const { logoutCallback } = get();

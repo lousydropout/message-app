@@ -6,13 +6,16 @@ import {
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
+import { AppState } from "react-native";
 import "react-native-reanimated";
 
 import NetworkStatusBar from "@/components/NetworkStatusBar";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import presenceService from "@/services/presenceService";
 import sqliteService from "@/services/sqliteService";
 import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useContactsStore } from "@/stores/contactsStore";
 import { useLoggerStore } from "@/stores/loggerStore";
 import { setupStoreConnections } from "@/stores/setupStores";
 
@@ -76,6 +79,53 @@ export default function RootLayout() {
     // Setup store connections after connection store is initialized
     const unsubscribeStores = setupStoreConnections();
     return unsubscribeStores;
+  }, []);
+
+  useEffect(() => {
+    // Subscribe to friend requests when user is logged in
+    if (user) {
+      const {
+        subscribeToFriendRequests,
+        subscribeToSentRequests,
+        subscribeToAcceptedRequests,
+        subscribeToFriendsSubcollection,
+      } = useContactsStore.getState();
+
+      const unsubscribeFriendRequests = subscribeToFriendRequests(user.uid);
+      const unsubscribeSentRequests = subscribeToSentRequests(user.uid);
+      const unsubscribeAcceptedRequests = subscribeToAcceptedRequests(user.uid);
+      const unsubscribeFriendsSubcollection = subscribeToFriendsSubcollection(
+        user.uid
+      );
+
+      return () => {
+        unsubscribeFriendRequests();
+        unsubscribeSentRequests();
+        unsubscribeAcceptedRequests();
+        unsubscribeFriendsSubcollection();
+      };
+    } else {
+      // Clear friend requests when user logs out
+      useContactsStore.setState({ friendRequests: [], sentRequests: [] });
+    }
+  }, [user]);
+
+  useEffect(() => {
+    // Handle app state changes for presence management
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      const { user } = useAuthStore.getState();
+      if (!user) return;
+
+      if (nextAppState === "active") {
+        presenceService.setOnlineStatus(user.uid, true).catch(console.error);
+        presenceService.startHeartbeat(user.uid);
+      } else if (nextAppState === "background" || nextAppState === "inactive") {
+        presenceService.setOnlineStatus(user.uid, false).catch(console.error);
+        presenceService.stopHeartbeat();
+      }
+    });
+
+    return () => subscription.remove();
   }, []);
 
   useEffect(() => {

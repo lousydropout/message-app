@@ -1,5 +1,6 @@
 import ContactsList from "@/components/ContactsList";
 import FriendRequestCard from "@/components/FriendRequestCard";
+import SentRequestCard from "@/components/SentRequestCard";
 import UserSearch from "@/components/UserSearch";
 import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
@@ -19,7 +20,7 @@ import {
 
 export default function ContactsScreen() {
   const { user } = useAuthStore();
-  const { friends, friendRequests, loading, loadFriends, loadFriendRequests } =
+  const { friends, friendRequests, sentRequests, loading, loadFriends } =
     useContactsStore();
   const { createOrOpenDirectConversation } = useMessagesStore();
 
@@ -29,20 +30,18 @@ export default function ContactsScreen() {
   const [senderProfiles, setSenderProfiles] = useState<Record<string, User>>(
     {}
   );
+  const [recipientProfiles, setRecipientProfiles] = useState<
+    Record<string, User>
+  >({});
 
   useEffect(() => {
     if (user) {
       loadFriends(user.uid);
-      loadFriendRequests(user.uid);
+      // Friend requests are now loaded via real-time subscriptions in root layout
     }
-  }, [user, loadFriends, loadFriendRequests]);
+  }, [user, loadFriends]);
 
-  // Refresh friend requests when switching to requests tab
-  useEffect(() => {
-    if (activeTab === "requests" && user) {
-      loadFriendRequests(user.uid);
-    }
-  }, [activeTab, user, loadFriendRequests]);
+  // Friend requests are now loaded via real-time subscriptions, no need to refresh
 
   // Fetch sender profiles when friend requests change
   useEffect(() => {
@@ -68,6 +67,31 @@ export default function ContactsScreen() {
       setSenderProfiles({});
     }
   }, [friendRequests]);
+
+  // Fetch recipient profiles when sent requests change
+  useEffect(() => {
+    if (sentRequests.length > 0) {
+      const fetchRecipientProfiles = async () => {
+        const recipientIds = sentRequests.map((req) => req.toUserId);
+        const uniqueRecipientIds = [...new Set(recipientIds)]; // Remove duplicates
+
+        try {
+          const profiles = await userService.getUsersByIds(uniqueRecipientIds);
+          const profilesMap: Record<string, User> = {};
+          profiles.forEach((profile) => {
+            profilesMap[profile.id] = profile;
+          });
+          setRecipientProfiles(profilesMap);
+        } catch (error) {
+          console.error("Error fetching recipient profiles:", error);
+        }
+      };
+
+      fetchRecipientProfiles();
+    } else {
+      setRecipientProfiles({});
+    }
+  }, [sentRequests]);
 
   const handleFriendSelect = async (friend: User) => {
     if (!user) return;
@@ -103,7 +127,12 @@ export default function ContactsScreen() {
       >
         {label}
         {count !== undefined && count > 0 && (
-          <Text style={styles.badgeText}>
+          <Text
+            style={[
+              styles.badgeText,
+              { color: activeTab === tab ? "#FFFFFF" : "#6C757D" },
+            ]}
+          >
             {"  "}({count})
           </Text>
         )}
@@ -127,25 +156,56 @@ export default function ContactsScreen() {
       case "requests":
         return (
           <ScrollView style={styles.content}>
-            {friendRequests.length === 0 ? (
+            {/* Incoming Friend Requests */}
+            {friendRequests.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Friend Requests</Text>
+                {friendRequests.map((request) => {
+                  const senderProfile = senderProfiles[request.fromUserId];
+                  return (
+                    <FriendRequestCard
+                      key={request.id}
+                      request={request}
+                      senderName={senderProfile?.displayName || "Unknown User"}
+                      senderEmail={
+                        senderProfile?.email || "unknown@example.com"
+                      }
+                    />
+                  );
+                })}
+              </>
+            )}
+
+            {/* Sent Friend Requests */}
+            {sentRequests.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Sent Requests</Text>
+                {sentRequests.map((request) => {
+                  const recipientProfile = recipientProfiles[request.toUserId];
+                  return (
+                    <SentRequestCard
+                      key={request.id}
+                      request={request}
+                      recipientName={
+                        recipientProfile?.displayName || "Unknown User"
+                      }
+                      recipientEmail={
+                        recipientProfile?.email || "unknown@example.com"
+                      }
+                    />
+                  );
+                })}
+              </>
+            )}
+
+            {/* Empty State */}
+            {friendRequests.length === 0 && sentRequests.length === 0 && (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>No friend requests</Text>
                 <Text style={styles.emptySubtext}>
                   When someone sends you a friend request, it will appear here
                 </Text>
               </View>
-            ) : (
-              friendRequests.map((request) => {
-                const senderProfile = senderProfiles[request.fromUserId];
-                return (
-                  <FriendRequestCard
-                    key={request.id}
-                    request={request}
-                    senderName={senderProfile?.displayName || "Unknown User"}
-                    senderEmail={senderProfile?.email || "unknown@example.com"}
-                  />
-                );
-              })
             )}
           </ScrollView>
         );
@@ -164,7 +224,11 @@ export default function ContactsScreen() {
     <View style={styles.container}>
       <View style={styles.tabContainer}>
         {renderTabButton("friends", "Friends", friends.length)}
-        {renderTabButton("requests", "Requests", friendRequests.length)}
+        {renderTabButton(
+          "requests",
+          "Requests",
+          friendRequests.length + sentRequests.length
+        )}
         {renderTabButton("search", "Search")}
       </View>
 
@@ -216,13 +280,19 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   badgeText: {
-    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "bold",
   },
   content: {
     flex: 1,
     padding: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#212529",
+    marginBottom: 12,
+    marginTop: 8,
   },
   loadingContainer: {
     flex: 1,

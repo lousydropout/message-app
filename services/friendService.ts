@@ -1,9 +1,11 @@
 import { db } from "@/config/firebase";
+import { Friend } from "@/types/Friend";
 import { FriendRequest } from "@/types/FriendRequest";
 import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   limit,
   query,
@@ -73,11 +75,31 @@ export class FriendService {
    */
   async acceptFriendRequest(requestId: string): Promise<void> {
     try {
+      // Get request data
       const requestRef = doc(db, "friendRequests", requestId);
+      const requestDoc = await getDoc(requestRef);
+
+      if (!requestDoc.exists()) {
+        throw new Error("Friend request not found");
+      }
+
+      const data = requestDoc.data();
+
+      // Update request status (keep for audit)
       await updateDoc(requestRef, {
         status: "accepted",
         updatedAt: serverTimestamp(),
       });
+
+      // Only create friend document in the current user's subcollection
+      // The other user will be notified via real-time subscription and update their own
+      await setDoc(
+        doc(db, "users", data.toUserId, "friends", data.fromUserId),
+        {
+          id: data.fromUserId,
+          addedAt: serverTimestamp(),
+        } as Friend
+      );
     } catch (error) {
       console.error("Error accepting friend request:", error);
       throw error;
@@ -174,27 +196,10 @@ export class FriendService {
    */
   async areFriends(userId1: string, userId2: string): Promise<boolean> {
     try {
-      // Check both directions of friendship to avoid composite index requirement
-      const query1 = query(
-        collection(db, "friendRequests"),
-        where("fromUserId", "==", userId1),
-        where("toUserId", "==", userId2),
-        where("status", "==", "accepted")
+      const friendDoc = await getDoc(
+        doc(db, "users", userId1, "friends", userId2)
       );
-
-      const query2 = query(
-        collection(db, "friendRequests"),
-        where("fromUserId", "==", userId2),
-        where("toUserId", "==", userId1),
-        where("status", "==", "accepted")
-      );
-
-      const [snapshot1, snapshot2] = await Promise.all([
-        getDocs(query1),
-        getDocs(query2),
-      ]);
-
-      return !snapshot1.empty || !snapshot2.empty;
+      return friendDoc.exists();
     } catch (error) {
       console.error("Error checking friendship:", error);
       return false;
@@ -244,42 +249,46 @@ export class FriendService {
   }
 
   /**
-   * Get all accepted friends for a user
+   * Get all friends for a user (returns friend IDs)
    */
-  async getFriends(userId: string): Promise<FriendRequest[]> {
+  async getFriends(userId: string): Promise<string[]> {
     try {
-      const friendsQuery = query(
-        collection(db, "friendRequests"),
-        where("status", "==", "accepted"),
-        where("fromUserId", "==", userId)
-      );
-
-      const querySnapshot = await getDocs(friendsQuery);
-      const sentFriends = querySnapshot.docs.map(
-        (doc) => doc.data() as FriendRequest
-      );
-
-      const receivedQuery = query(
-        collection(db, "friendRequests"),
-        where("status", "==", "accepted"),
-        where("toUserId", "==", userId)
-      );
-
-      const receivedSnapshot = await getDocs(receivedQuery);
-      const receivedFriends = receivedSnapshot.docs.map(
-        (doc) => doc.data() as FriendRequest
-      );
-
-      const allFriends = [...sentFriends, ...receivedFriends];
-
-      // Sort by updatedAt on the client side to avoid composite index requirement
-      return allFriends.sort((a, b) => {
-        const aTime = a.updatedAt.toDate ? a.updatedAt.toDate().getTime() : 0;
-        const bTime = b.updatedAt.toDate ? b.updatedAt.toDate().getTime() : 0;
-        return bTime - aTime; // Descending order
-      });
+      const friendsRef = collection(db, "users", userId, "friends");
+      const snapshot = await getDocs(friendsRef);
+      return snapshot.docs.map((doc) => doc.id);
     } catch (error) {
       console.error("Error getting friends:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add a friend to the current user's subcollection
+   */
+  async addFriendToSubcollection(
+    userId: string,
+    friendId: string
+  ): Promise<void> {
+    try {
+      await setDoc(doc(db, "users", userId, "friends", friendId), {
+        id: friendId,
+        addedAt: serverTimestamp(),
+      } as Friend);
+    } catch (error) {
+      console.error("Error adding friend to subcollection:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove friend from the current user's subcollection only
+   * The other user will be notified via real-time subscription and remove from their own
+   */
+  async removeFriend(userId: string, friendId: string): Promise<void> {
+    try {
+      await deleteDoc(doc(db, "users", userId, "friends", friendId));
+    } catch (error) {
+      console.error("Error removing friend:", error);
       throw error;
     }
   }

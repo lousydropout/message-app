@@ -4,8 +4,8 @@ import React from "react";
 import { Text } from "react-native";
 
 export default function TabLayout() {
-  const { friendRequests } = useContactsStore();
-  const pendingRequestsCount = friendRequests.length;
+  const { friendRequests, sentRequests } = useContactsStore();
+  const pendingRequestsCount = friendRequests.length + sentRequests.length;
 
   return (
     <Tabs
