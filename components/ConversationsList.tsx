@@ -26,14 +26,12 @@ export function ConversationsList() {
     Record<string, User>
   >({});
 
-  const { user, userProfile } = useAuthStore();
+  const { user } = useAuthStore();
   const {
     conversations,
     loading,
     loadConversations,
     subscribeToConversations,
-    createOrOpenDirectConversation,
-    messages,
   } = useMessagesStore();
 
   useEffect(() => {

@@ -21,6 +21,7 @@ export default function TabLayout() {
         },
         headerTitleStyle: {
           fontWeight: "600",
+          color: "#000000",
         },
       }}
     >

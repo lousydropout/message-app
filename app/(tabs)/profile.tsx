@@ -1,5 +1,5 @@
 import { useAuthStore } from "@/stores/authStore";
-import { Link, useRouter } from "expo-router";
+import { Link } from "expo-router";
 import React from "react";
 import {
   Alert,
@@ -12,7 +12,6 @@ import {
 
 export default function ProfileScreen() {
   const { user, userProfile, logout } = useAuthStore();
-  const router = useRouter();
 
   const handleLogout = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -41,10 +40,6 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Your Profile</Text>
-      </View>
-
       <View style={styles.profileCard}>
         <View style={styles.avatarContainer}>
           <View style={styles.avatar}>
@@ -56,9 +51,9 @@ export default function ProfileScreen() {
 
         <View style={styles.userInfo}>
           <Text style={styles.displayName}>
-            {userProfile?.displayName || "No name set"}
+            {userProfile?.displayName + " " || "No name set"}
           </Text>
-          <Text style={styles.email}>{user?.email || "No email"}</Text>
+          <Text style={styles.email}>{user?.email + " " || "No email"}</Text>
         </View>
       </View>
 
@@ -74,19 +69,19 @@ export default function ProfileScreen() {
         <View style={styles.settingItem}>
           <Text style={styles.settingLabel}>Auto-translate messages</Text>
           <Text style={styles.settingValue}>
-            {userProfile?.aiSettings?.autoTranslate ? "On" : "Off"}
+            {userProfile?.aiSettings?.autoTranslate ? "On " : "Off "}
           </Text>
         </View>
         <View style={styles.settingItem}>
           <Text style={styles.settingLabel}>Cultural hints</Text>
           <Text style={styles.settingValue}>
-            {userProfile?.aiSettings?.culturalHints ? "On" : "Off"}
+            {userProfile?.aiSettings?.culturalHints ? "On " : "Off "}
           </Text>
         </View>
         <View style={styles.settingItem}>
           <Text style={styles.settingLabel}>Formality adjustment</Text>
           <Text style={styles.settingValue}>
-            {userProfile?.aiSettings?.formalityAdjustment ? "On" : "Off"}
+            {userProfile?.aiSettings?.formalityAdjustment ? "On " : "Off "}
           </Text>
         </View>
       </View>

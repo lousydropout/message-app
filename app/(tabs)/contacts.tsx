@@ -103,7 +103,9 @@ export default function ContactsScreen() {
       >
         {label}
         {count !== undefined && count > 0 && (
-          <Text style={styles.badge}> {count}</Text>
+          <Text style={styles.badgeText}>
+            {"  "}({count})
+          </Text>
         )}
       </Text>
     </View>
@@ -160,10 +162,6 @@ export default function ContactsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Contacts</Text>
-      </View>
-
       <View style={styles.tabContainer}>
         {renderTabButton("friends", "Friends", friends.length)}
         {renderTabButton("requests", "Requests", friendRequests.length)}
@@ -195,7 +193,7 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: "row",
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#E9ECEF",
@@ -217,15 +215,10 @@ const styles = StyleSheet.create({
   activeTabButtonText: {
     color: "#FFFFFF",
   },
-  badge: {
-    backgroundColor: "#DC3545",
+  badgeText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "bold",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    marginLeft: 4,
   },
   content: {
     flex: 1,

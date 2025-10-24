@@ -882,8 +882,6 @@ export default function DiagnosticsScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>Diagnostics</Text>
-
       {/* System Logs Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>📋 System Logs</Text>
