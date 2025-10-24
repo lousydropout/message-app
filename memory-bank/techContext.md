@@ -47,6 +47,59 @@
 - **Rate Limiting**: Per-user API call limits and quotas
 - **Response Streaming**: Real-time AI response delivery
 
+## Note for handling the SQLite library
+
+> The following code uses the `expo-sqlite` wrapper, **not** a normal Node or RN SQLite binding.
+> This wrapper has some major behavioral quirks around async transactions, concurrency, and parameter limits that must be respected when reviewing or generating queries.
+
+**Important constraints:**
+
+1. **Async transactions aren’t real transactions.**
+
+   - `db.withTransactionAsync(async () => {...})` runs `BEGIN`, `await task()`, `COMMIT`.
+   - If `await` yields to the event loop, the native transaction context can vanish, causing
+     `Error: cannot rollback - no transaction is active`.
+   - Only `withExclusiveTransactionAsync` actually creates a new isolated native connection that guarantees a stable BEGIN/COMMIT/ROLLBACK cycle.
+
+2. **Only one writer connection at a time.**
+
+   - Expo SQLite uses file-level locking.
+   - If any other query or background read is active, `withExclusiveTransactionAsync` will throw
+     `Error code 5: database is locked`.
+   - Avoid concurrent writes; queue writes through a mutex, or add a retry loop (50–100ms) on “database is locked”.
+
+3. **Parameter limit = 999.**
+
+   - Each `?` counts.
+   - For `INSERT ... VALUES (?, ?, ...)`, batch size must stay within 999 parameters.
+   - E.g., 11 columns × 90 rows = 990 safe.
+   - If the schema adds columns later, recompute this.
+
+4. **Never mix async `await` with the callback-style `db.transaction()`**
+
+   - The callback API (`tx.executeSql(...)`) must be synchronous — no awaits inside.
+   - Use one or the other, not both.
+
+5. **Don’t leak statements.**
+
+   - Expo’s internal implementation may not finalize prepared statements automatically.
+   - A dangling prepared statement can cause the next `withExclusiveTransactionAsync` to fail with “database is locked”.
+
+6. **Safe patterns for writes:**
+
+   - Small writes → `withTransactionAsync` (same connection, no concurrency)
+   - Large or critical batch writes → `withExclusiveTransactionAsync` + retry loop
+   - Full control → manual `BEGIN IMMEDIATE / COMMIT / ROLLBACK` on the same connection
+
+**Request for Cursor:**
+Audit all `db.runAsync`, `db.execAsync`, and transaction calls for:
+
+- possible `await` inside `withTransactionAsync` (replace with exclusive or manual BEGIN/COMMIT);
+- unbounded concurrent calls that could collide on the write lock;
+- any statement generating more than 999 bound parameters.
+
+Ensure that all async inserts, updates, or deletes are **serialized** or **retry-safe**, and that every transaction path explicitly commits or rolls back before any new query can start.
+
 ## Project Structure
 
 ```
@@ -110,7 +163,7 @@ types/
 
 ### Project Setup
 
-- **Project ID**: `messageai-7e81f`
+- **Project ID**: `messageai-862e3`
 - **Database**: Firestore in production mode
 - **Authentication**: Email/password auth
 - **Cloud Functions**: OpenAI API integration
@@ -148,6 +201,8 @@ interface FriendRequest {
 - **Audit Trail**: friendRequests collection preserved for compliance
 - **Real-time Presence**: 30-second heartbeat with 40-second timeout
 - **Scalable**: Works efficiently with millions of users
+- **Security Compliance**: Users only update their own friend subcollections
+- **Real-time Subscriptions**: Comprehensive friend request and friend management
 
 ```typescript
 // Users Collection

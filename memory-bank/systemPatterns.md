@@ -83,6 +83,8 @@ interface FriendRequest {
 - **Audit Trail**: friendRequests collection preserved for compliance
 - **Real-time Presence**: 30-second heartbeat with 40-second timeout
 - **Scalable**: Works efficiently with millions of users
+- **Security Compliance**: Users only update their own friend subcollections
+- **Real-time Subscriptions**: Comprehensive friend request and friend management
 
 ### 3. State Management Pattern
 
@@ -174,8 +176,9 @@ interface FriendRequest {
 
 ### Scalability Considerations
 
-- **Friend System**: Subcollections scale to millions of users
+- **Friend System**: Subcollections scale to millions of users with O(1) lookups
 - **Message System**: Conversation-based partitioning
-- **Presence System**: Heartbeat mechanism with timeout handling
+- **Presence System**: Heartbeat mechanism with timeout handling and app lifecycle integration
 - **Offline Support**: Queue-first architecture handles network issues
 - **Memory Usage**: Bounded to 100 messages per conversation
+- **Real-time Subscriptions**: Comprehensive friend request and friend management with security compliance

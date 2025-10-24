@@ -1,4 +1,5 @@
 import { db } from "@/config/firebase";
+import { useConnectionStore } from "@/stores/connectionStore";
 import { logger } from "@/stores/loggerStore";
 import { Conversation } from "@/types/Conversation";
 import { Message } from "@/types/Message";
@@ -225,6 +226,11 @@ class ConversationService {
     return onSnapshot(
       q,
       (querySnapshot) => {
+        // SUCCESS: Firestore is connected and working
+        const { updateFirestoreConnectionState } =
+          useConnectionStore.getState();
+        updateFirestoreConnectionState(true);
+
         logger.debug(
           "conversations",
           `[DEBUG] Conversation subscription received ${querySnapshot.docs.length} documents`
@@ -261,11 +267,24 @@ class ConversationService {
         callback(conversations);
       },
       (error) => {
-        logger.error(
-          "conversations",
-          `[DEBUG] Conversation subscription error:`,
-          error
-        );
+        // FAILURE: Check if it's a connection issue
+        const { updateFirestoreConnectionState } =
+          useConnectionStore.getState();
+
+        if (
+          error.code === "unavailable" ||
+          error.message.includes("client was offline") ||
+          error.code === "deadline-exceeded" ||
+          error.code === "permission-denied"
+        ) {
+          updateFirestoreConnectionState(false);
+        }
+
+        logger.error("conversations", "Conversation subscription error:", {
+          error: error.message,
+          code: error.code,
+          userId,
+        });
         // Don't call callback on error, just log it
       }
     );

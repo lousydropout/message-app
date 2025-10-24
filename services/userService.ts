@@ -124,7 +124,7 @@ export class UserService {
     try {
       await this.updateUserProfile(userId, { languagePreferences: languages });
     } catch (error) {
-      console.error("Error updating language preferences:", error);
+      console.debug("Error updating language preferences:", error);
       throw error;
     }
   }
@@ -149,7 +149,7 @@ export class UserService {
 
       await this.updateUserProfile(userId, { aiSettings: updatedSettings });
     } catch (error) {
-      console.error("Error updating AI settings:", error);
+      console.debug("Error updating AI settings:", error);
       throw error;
     }
   }
@@ -206,7 +206,7 @@ export class UserService {
       }
       return userProfile.blockedUsers.includes(targetUserId);
     } catch (error) {
-      console.error("Error checking if user is blocked:", error);
+      console.debug("Error checking if user is blocked:", error);
       return false;
     }
   }

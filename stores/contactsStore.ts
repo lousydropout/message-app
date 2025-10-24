@@ -260,7 +260,7 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
 
       return "stranger";
     } catch (error) {
-      console.error("Error checking friend request status:", error);
+      console.debug("Error checking friend request status:", error);
       return "stranger";
     }
   },

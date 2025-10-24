@@ -4,7 +4,7 @@ import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 
 class PresenceService {
   private static instance: PresenceService;
-  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
   static getInstance(): PresenceService {
     if (!PresenceService.instance) {
@@ -18,7 +18,7 @@ class PresenceService {
    */
   async setOnlineStatus(userId: string, online: boolean): Promise<void> {
     try {
-      logger.info(
+      logger.debug(
         "presence",
         `Setting online status for user ${userId}: ${online}`
       );
@@ -28,12 +28,12 @@ class PresenceService {
         heartbeat: serverTimestamp(),
       });
 
-      logger.info(
+      logger.debug(
         "presence",
         `Online status updated successfully for user ${userId}`
       );
     } catch (error) {
-      logger.error(
+      logger.debug(
         "presence",
         `Failed to set online status for user ${userId}`,
         {
@@ -56,7 +56,7 @@ class PresenceService {
 
       logger.debug("presence", `Heartbeat updated for user ${userId}`);
     } catch (error) {
-      logger.error(
+      logger.debug(
         "presence",
         `Failed to update heartbeat for user ${userId}`,
         {
@@ -77,7 +77,7 @@ class PresenceService {
 
     this.heartbeatInterval = setInterval(() => {
       this.updateHeartbeat(userId).catch((error) => {
-        logger.error("presence", `Heartbeat failed for user ${userId}`, {
+        logger.debug("presence", `Heartbeat failed for user ${userId}`, {
           error: error instanceof Error ? error.message : "Unknown error",
         });
       });

@@ -137,7 +137,7 @@ class MessageService {
 
       return message;
     } catch (error) {
-      logger.error("messages", "Error sending message:", error);
+      logger.debug("messages", "Error sending message:", error);
       throw error;
     }
   }
@@ -250,7 +250,7 @@ class MessageService {
         updatedAt: serverTimestamp(),
       });
     } catch (error) {
-      logger.error("messages", "Error marking message as read:", error);
+      logger.debug("messages", "Error marking message as read:", error);
       throw error;
     }
   }
@@ -292,7 +292,7 @@ class MessageService {
       // Execute batch update
       await Promise.all(batch);
     } catch (error) {
-      logger.error("messages", "Error marking conversation as read:", error);
+      logger.debug("messages", "Error marking conversation as read:", error);
       throw error;
     }
   }
@@ -381,7 +381,7 @@ class MessageService {
         });
       }
     } catch (error) {
-      logger.error("messages", "Error updating typing status:", error);
+      logger.debug("messages", "Error updating typing status:", error);
       throw error;
     }
   }

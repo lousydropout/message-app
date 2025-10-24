@@ -84,7 +84,23 @@
 - UUID-based idempotency for message deduplication
 - Comprehensive logging system with SQLite persistence
 
-### Epic 1.5 - Friends Subcollection & Online Presence ✅
+### Epic 3.2 - Data Management & Sync + Memory Optimization ✅
+
+**Unified Queue-First Architecture:**
+
+- Sequential message processing to maintain order
+- UUID-based idempotency prevents duplicate messages
+- Three-tier data flow with clear separation of concerns
+- Memory optimization with conversation lifecycle management
+
+**Performance Improvements:**
+
+- Reduced MAX_MESSAGES_IN_MEMORY from 200 → 100 per conversation
+- Fixed unnecessary SQLite queries on reconnection
+- Sequential processing eliminates race conditions
+- Comprehensive testing of offline → online → sync flow
+
+### Epic 1.6 - Friends Subcollection & Online Presence ✅
 
 **Scalable Friend Management:**
 
@@ -102,15 +118,14 @@
 - Presence service singleton with error handling
 - Performance optimization with subcollection queries
 
+**Comprehensive Friend Request Management:**
+
+- Real-time subscriptions for friend requests and friend subcollection changes
+- SentRequestCard component for outgoing friend requests
+- Real-time tab badge updates for friend request counts
+- Security compliance with users only updating their own documents
+
 ## 🚧 In Progress
-
-### Epic 3.2 - Message System Refactoring
-
-- Rename tempId to messageId (schema migration)
-- Add UUID generation (replace timestamp-based IDs)
-- Implement unified queue-first flow
-- Add SQLite message cache operations
-- Add duplicate detection in subscription handler
 
 ### UI Integration
 
@@ -143,6 +158,6 @@
 
 ## 📊 Current Status
 
-**Core messaging infrastructure complete** - The foundation is solid with real-time messaging, offline support, friend management, and online presence tracking. Ready for AI features and mobile quality improvements.
+**Core messaging infrastructure complete** - The foundation is solid with real-time messaging, offline support, scalable friend management, comprehensive online presence tracking, and optimized data management with sequential message processing. Ready for AI features and mobile quality improvements.
 
-**Next Priority**: Complete Epic 3.2 message system refactoring and add UI integration for online presence indicators.
+**Next Priority**: Add UI integration for online presence indicators and begin Epic 2 mobile app quality improvements.

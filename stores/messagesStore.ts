@@ -62,6 +62,7 @@ export interface MessagesState {
   syncNewMessagesForConversation: (conversationId: string) => Promise<void>;
   clearSubscriptions: () => void;
   clearAllData: () => void;
+  getTotalUnreadCount: (userId: string) => number;
 }
 
 export const useMessagesStore = create<MessagesState>((set, get) => ({
@@ -125,7 +126,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           try {
             await sqliteService.saveConversation(conversation);
           } catch (error) {
-            logger.error("messages", "Failed to save conversation to SQLite", {
+            logger.debug("messages", "Failed to save conversation to SQLite", {
               conversationId: conversation.id,
               error: error instanceof Error ? error.message : "Unknown error",
             });
@@ -134,16 +135,16 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
         // Pre-populate user profiles for all conversation participants
         const allParticipantIds = new Set<string>();
-        conversations.forEach(conv => {
-          conv.participants.forEach(pid => allParticipantIds.add(pid));
+        conversations.forEach((conv) => {
+          conv.participants.forEach((pid) => allParticipantIds.add(pid));
         });
-        
+
         // Fetch and cache all participant profiles
         if (allParticipantIds.size > 0) {
           try {
             await userService.getUsersByIds(Array.from(allParticipantIds));
           } catch (error) {
-            logger.error("messages", "Failed to cache participant profiles", {
+            logger.debug("messages", "Failed to cache participant profiles", {
               error: error instanceof Error ? error.message : "Unknown error",
             });
           }
@@ -157,7 +158,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             get()
               .syncNewMessagesForConversation(conversation.id)
               .catch((error) => {
-                logger.error("messages", "Background sync failed", {
+                logger.debug("messages", "Background sync failed", {
                   conversationId: conversation.id,
                   error:
                     error instanceof Error ? error.message : "Unknown error",
@@ -334,7 +335,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
                   )
                 )
             ).catch((error) => {
-              logger.error(
+              logger.debug(
                 "messages",
                 "Error auto-marking new messages as read:",
                 error
@@ -505,9 +506,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           messageId,
           conversationId,
         });
-        logger.debug("messages", "Processing queue immediately (online)", {
-          messageId,
-        });
         await get().processQueue();
 
         logger.info("messages", "Message sent successfully", {
@@ -515,7 +513,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           conversationId,
         });
       } else {
-        logger.info("messages", "Message queued (offline)", { messageId });
         logger.info("messages", "Message queued (offline)", { messageId });
 
         // Update queue count in connection store
@@ -531,11 +528,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
-      logger.error("messages", "Failed to send message", {
-        messageId,
-        conversationId,
-        error: errorMessage,
-      });
       logger.error("messages", "Failed to send message", {
         messageId,
         conversationId,
@@ -695,7 +687,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         isTyping
       );
     } catch (error) {
-      logger.error("messages", "Error updating typing status", {
+      logger.debug("messages", "Error updating typing status", {
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
@@ -761,13 +753,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           timestamp: Date.now(),
         }
       );
-      logger.debug(
-        "messages",
-        "Queue processing already in progress, skipping",
-        {
-          timestamp: Date.now(),
-        }
-      );
       return;
     }
 
@@ -780,35 +765,31 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           timestamp: Date.now(),
         }
       );
-      logger.warning(
-        "messages",
-        "Cannot process queue: User not authenticated",
-        {
-          timestamp: Date.now(),
-        }
-      );
       return;
     }
 
     const isOnline = getConnectionStatus?.()?.isOnline ?? true;
+    const { firestoreConnected } = useConnectionStore.getState();
+
     if (!isOnline) {
-      logger.debug("messages", "Cannot process queue: Currently offline", {
-        timestamp: Date.now(),
-      });
       logger.debug("messages", "Cannot process queue: Currently offline", {
         timestamp: Date.now(),
       });
       return;
     }
 
-    if (!sqliteService.isInitialized()) {
-      logger.warning(
+    if (!firestoreConnected) {
+      logger.debug(
         "messages",
-        "Cannot process queue: SQLite not initialized",
+        "Cannot process queue: Firestore not connected",
         {
           timestamp: Date.now(),
         }
       );
+      return;
+    }
+
+    if (!sqliteService.isInitialized()) {
       logger.warning(
         "messages",
         "Cannot process queue: SQLite not initialized",
@@ -827,18 +808,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         userId: user.uid,
         timestamp: Date.now(),
       });
-      logger.info("messages", "Starting to process message queue", {
-        userId: user.uid,
-        timestamp: Date.now(),
-      });
       // Note: Sync status will be managed by connection store callbacks
 
       const queuedMessages = await sqliteService.getQueuedMessages();
-      logger.info("messages", "Retrieved queued messages", {
-        queuedCount: queuedMessages.length,
-        timestamp: Date.now(),
-      });
-
       logger.info("messages", "Retrieved queued messages", {
         queuedCount: queuedMessages.length,
         timestamp: Date.now(),
@@ -855,235 +827,194 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       let successCount = 0;
       let failedCount = 0;
 
-      // Process messages in smaller batches to prevent memory issues
-      const BATCH_SIZE = 5;
-      for (let i = 0; i < queuedMessages.length; i += BATCH_SIZE) {
-        const batch = queuedMessages.slice(i, i + BATCH_SIZE);
+      // Process messages sequentially to maintain order
+      for (let i = 0; i < queuedMessages.length; i++) {
+        const queued = queuedMessages[i];
 
         logger.debug(
           "messages",
-          `Processing batch ${Math.floor(i / BATCH_SIZE) + 1}`,
+          `Processing message ${i + 1} of ${queuedMessages.length}`,
           {
-            batchSize: batch.length,
-            batchStart: i,
-            totalMessages: queuedMessages.length,
+            messageId: queued.messageId,
+            conversationId: queued.conversationId,
             timestamp: Date.now(),
           }
         );
 
-        for (const queued of batch) {
-          try {
-            logger.debug("messages", "Processing queued message", {
-              messageId: queued.messageId,
-              conversationId: queued.conversationId,
-              timestamp: Date.now(),
-            });
+        try {
+          logger.debug("messages", "Processing queued message", {
+            messageId: queued.messageId,
+            conversationId: queued.conversationId,
+            timestamp: Date.now(),
+          });
 
-            logger.debug("messages", "Processing queued message", {
-              messageId: queued.messageId,
-              conversationId: queued.conversationId,
-              timestamp: Date.now(),
-            });
-
-            // Check if conversation exists before sending message
-            const conversation = await conversationService.getConversation(
-              queued.conversationId
-            );
-            if (!conversation) {
-              logger.warning(
-                "messages",
-                `Conversation ${queued.conversationId} not found, skipping message ${queued.messageId}`,
-                {
-                  conversationId: queued.conversationId,
-                  messageId: queued.messageId,
-                  timestamp: Date.now(),
-                }
-              );
-
-              logger.warning(
-                "messages",
-                "Conversation not found, skipping message",
-                {
-                  messageId: queued.messageId,
-                  conversationId: queued.conversationId,
-                  timestamp: Date.now(),
-                }
-              );
-
-              // Remove from queue since conversation doesn't exist
-              await sqliteService.removeQueuedMessage(queued.messageId);
-
-              // Update local state to mark as failed
-              set((state) => {
-                const currentMessages =
-                  state.messages[queued.conversationId] || [];
-                return {
-                  messages: {
-                    ...state.messages,
-                    [queued.conversationId]: currentMessages.map((msg) =>
-                      msg.id === queued.messageId
-                        ? { ...msg, status: "failed" }
-                        : msg
-                    ),
-                  },
-                };
-              });
-
-              failedCount++;
-              continue;
-            }
-
-            logger.debug(
+          // Check if conversation exists before sending message
+          const conversation = await conversationService.getConversation(
+            queued.conversationId
+          );
+          if (!conversation) {
+            logger.warning(
               "messages",
-              "Conversation found, attempting to send message",
+              `Conversation ${queued.conversationId} not found, skipping message ${queued.messageId}`,
               {
-                messageId: queued.messageId,
                 conversationId: queued.conversationId,
-                participantCount: conversation.participants.length,
+                messageId: queued.messageId,
                 timestamp: Date.now(),
               }
             );
 
-            logger.debug(
-              "messages",
-              "Conversation found, attempting to send message",
-              {
-                messageId: queued.messageId,
-                conversationId: queued.conversationId,
-                participantCount: conversation.participants.length,
-                timestamp: Date.now(),
-              }
-            );
-
-            // Send to Firestore with UUID
-            const message = await messageService.sendMessage(
-              queued.messageId,
-              queued.conversationId,
-              queued.senderId,
-              queued.text
-            );
-
-            logger.info("messages", "Queued message sent successfully", {
-              messageId: queued.messageId,
-              conversationId: queued.conversationId,
-              timestamp: Date.now(),
-            });
-
-            // Save to messages table
-            await sqliteService.saveMessage(message);
-
-            // Remove from queue
+            // Remove from queue since conversation doesn't exist
             await sqliteService.removeQueuedMessage(queued.messageId);
 
-            // Update local state - replace temp message with real message
+            // Update local state to mark as failed
             set((state) => {
               const currentMessages =
                 state.messages[queued.conversationId] || [];
-              const tempMessageExists = currentMessages.some(
-                (msg) => msg.id === queued.messageId
-              );
-
-              if (tempMessageExists) {
-                // Replace temp message with real message
-                return {
-                  messages: {
-                    ...state.messages,
-                    [queued.conversationId]: currentMessages.map((msg) =>
-                      msg.id === queued.messageId
-                        ? { ...message, status: "sent" as const }
-                        : msg
-                    ),
-                  },
-                };
-              } else {
-                // Temp message not in state, add real message in correct position
-                const newMessage = { ...message, status: "sent" as const };
-                const updatedMessages = [...currentMessages];
-
-                // Find correct position based on timestamp
-                const insertIndex = updatedMessages.findIndex((msg) => {
-                  const msgTime = msg.timestamp?.toDate?.() || new Date(0);
-                  const newMsgTime =
-                    newMessage.timestamp?.toDate?.() || new Date(0);
-                  return msgTime.getTime() < newMsgTime.getTime();
-                });
-
-                if (insertIndex === -1) {
-                  // New message is older than all existing messages, add to end
-                  updatedMessages.push(newMessage);
-                } else {
-                  // Insert at the correct position
-                  updatedMessages.splice(insertIndex, 0, newMessage);
-                }
-
-                // Sort to ensure correct order
-                updatedMessages.sort((a, b) => {
-                  const aTime = a.timestamp?.toDate?.() || new Date(0);
-                  const bTime = b.timestamp?.toDate?.() || new Date(0);
-                  return bTime.getTime() - aTime.getTime(); // Newest first
-                });
-
-                return {
-                  messages: {
-                    ...state.messages,
-                    [queued.conversationId]: updatedMessages,
-                  },
-                };
-              }
-            });
-
-            successCount++;
-            logger.info("messages", "Queued message sent successfully", {
-              messageId: queued.messageId,
-              conversationId: queued.conversationId,
-              timestamp: Date.now(),
-            });
-          } catch (error) {
-            const errorMessage =
-              error instanceof Error ? error.message : String(error);
-            logger.error("messages", "Failed to send queued message", {
-              messageId: queued.messageId,
-              conversationId: queued.conversationId,
-              error: errorMessage,
-              errorType:
-                error instanceof Error ? error.constructor.name : typeof error,
-              timestamp: Date.now(),
-            });
-
-            logger.error("messages", "Failed to send queued message", {
-              messageId: queued.messageId,
-              conversationId: queued.conversationId,
-              error: errorMessage,
-              errorType:
-                error instanceof Error ? error.constructor.name : typeof error,
-              timestamp: Date.now(),
-            });
-
-            // Update retry count
-            await sqliteService.updateQueuedMessageRetry(
-              queued.messageId,
-              errorMessage
-            );
-            failedCount++;
-
-            // Mark message as failed in local state
-            set((state) => ({
-              messages: {
-                ...state.messages,
-                [queued.conversationId]:
-                  state.messages[queued.conversationId]?.map((msg) =>
+              return {
+                messages: {
+                  ...state.messages,
+                  [queued.conversationId]: currentMessages.map((msg) =>
                     msg.id === queued.messageId
                       ? { ...msg, status: "failed" }
                       : msg
-                  ) || [],
-              },
-            }));
+                  ),
+                },
+              };
+            });
+
+            failedCount++;
+            continue;
           }
+
+          logger.debug(
+            "messages",
+            "Conversation found, attempting to send message",
+            {
+              messageId: queued.messageId,
+              conversationId: queued.conversationId,
+              participantCount: conversation.participants.length,
+              timestamp: Date.now(),
+            }
+          );
+
+          // Send to Firestore with UUID
+          const message = await messageService.sendMessage(
+            queued.messageId,
+            queued.conversationId,
+            queued.senderId,
+            queued.text
+          );
+
+          logger.info("messages", "Queued message sent successfully", {
+            messageId: queued.messageId,
+            conversationId: queued.conversationId,
+            timestamp: Date.now(),
+          });
+
+          // Save to messages table
+          await sqliteService.saveMessage(message);
+
+          // Remove from queue
+          await sqliteService.removeQueuedMessage(queued.messageId);
+
+          // Update local state - replace temp message with real message
+          set((state) => {
+            const currentMessages = state.messages[queued.conversationId] || [];
+            const tempMessageExists = currentMessages.some(
+              (msg) => msg.id === queued.messageId
+            );
+
+            if (tempMessageExists) {
+              // Replace temp message with real message
+              return {
+                messages: {
+                  ...state.messages,
+                  [queued.conversationId]: currentMessages.map((msg) =>
+                    msg.id === queued.messageId
+                      ? { ...message, status: "sent" as const }
+                      : msg
+                  ),
+                },
+              };
+            } else {
+              // Temp message not in state, add real message in correct position
+              const newMessage = { ...message, status: "sent" as const };
+              const updatedMessages = [...currentMessages];
+
+              // Find correct position based on timestamp
+              const insertIndex = updatedMessages.findIndex((msg) => {
+                const msgTime = msg.timestamp?.toDate?.() || new Date(0);
+                const newMsgTime =
+                  newMessage.timestamp?.toDate?.() || new Date(0);
+                return msgTime.getTime() < newMsgTime.getTime();
+              });
+
+              if (insertIndex === -1) {
+                // New message is older than all existing messages, add to end
+                updatedMessages.push(newMessage);
+              } else {
+                // Insert at the correct position
+                updatedMessages.splice(insertIndex, 0, newMessage);
+              }
+
+              // Sort to ensure correct order
+              updatedMessages.sort((a, b) => {
+                const aTime = a.timestamp?.toDate?.() || new Date(0);
+                const bTime = b.timestamp?.toDate?.() || new Date(0);
+                return bTime.getTime() - aTime.getTime(); // Newest first
+              });
+
+              return {
+                messages: {
+                  ...state.messages,
+                  [queued.conversationId]: updatedMessages,
+                },
+              };
+            }
+          });
+
+          successCount++;
+          logger.info("messages", "Queued message sent successfully", {
+            messageId: queued.messageId,
+            conversationId: queued.conversationId,
+            timestamp: Date.now(),
+          });
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          logger.debug("messages", "Failed to send queued message", {
+            messageId: queued.messageId,
+            conversationId: queued.conversationId,
+            error: errorMessage,
+            errorType:
+              error instanceof Error ? error.constructor.name : typeof error,
+            timestamp: Date.now(),
+          });
+
+          // Update retry count
+          await sqliteService.updateQueuedMessageRetry(
+            queued.messageId,
+            errorMessage
+          );
+          failedCount++;
+
+          // Mark message as failed in local state
+          set((state) => ({
+            messages: {
+              ...state.messages,
+              [queued.conversationId]:
+                state.messages[queued.conversationId]?.map((msg) =>
+                  msg.id === queued.messageId
+                    ? { ...msg, status: "failed" }
+                    : msg
+                ) || [],
+            },
+          }));
         }
 
-        // Small delay between batches to prevent overwhelming the system
-        if (i + BATCH_SIZE < queuedMessages.length) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
+        // Small delay between messages to prevent overwhelming the system
+        if (i < queuedMessages.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
         }
       }
 
@@ -1275,7 +1206,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         `Background synced ${newMessages.length} messages for conversation ${conversationId}`
       );
     } catch (error) {
-      logger.error("messages", "Failed to sync new messages", {
+      logger.debug("messages", "Failed to sync new messages", {
         conversationId,
         error: error instanceof Error ? error.message : "Unknown error",
       });
@@ -1337,6 +1268,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       loading: false,
       sendingMessage: false,
     });
+  },
+
+  getTotalUnreadCount(userId: string) {
+    const { conversations } = get();
+    return conversations.reduce((total, conversation) => {
+      const unreadCount = conversation.unreadCounts?.[userId] || 0;
+      return total + unreadCount;
+    }, 0);
   },
 }));
 

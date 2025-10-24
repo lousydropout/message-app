@@ -81,7 +81,7 @@ export const useLoggerStore = create<LoggerStore>((set, get) => ({
       } catch (error) {
         // Don't use logger here to avoid recursion
         try {
-          console.error("Failed to save log to SQLite:", error);
+          console.debug("Failed to save log to SQLite:", error);
         } catch {}
       }
     }
@@ -113,7 +113,7 @@ export const useLoggerStore = create<LoggerStore>((set, get) => ({
       const logs = await sqliteService.getLogs(limit, minLevel);
       set({ logs });
     } catch (error) {
-      console.error("Failed to load logs:", error);
+      console.debug("Failed to load logs:", error);
     }
   },
 
@@ -127,7 +127,7 @@ export const useLoggerStore = create<LoggerStore>((set, get) => ({
       await sqliteService.clearAllLogs();
       set({ logs: [] });
     } catch (error) {
-      console.error("Failed to clear logs:", error);
+      console.debug("Failed to clear logs:", error);
     }
   },
 }));

@@ -46,6 +46,9 @@ export interface ConnectionState {
   // Callback management
   networkEventCallbacks: Set<NetworkEventCallback>;
 
+  // Firestore connection state
+  firestoreConnected: boolean;
+
   // Actions
   initialize: () => () => void; // Returns unsubscribe function
   setOnline: (isOnline: boolean) => void;
@@ -59,6 +62,7 @@ export interface ConnectionState {
   refreshQueueCounts: () => Promise<void>;
   resetSyncStats: () => void;
   registerNetworkCallback: (callback: NetworkEventCallback) => () => void;
+  updateFirestoreConnectionState: (connected: boolean) => void;
   triggerNetworkCallbacks: () => Promise<void>;
 }
 
@@ -86,6 +90,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   lastError: null,
   errorCount: 0,
   networkEventCallbacks: new Set(),
+  firestoreConnected: true, // Assume connected initially
 
   // Initialize network monitoring
   initialize: () => {
@@ -352,7 +357,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         failed: failedCount,
       });
     } catch (error) {
-      logger.error("connection", "Failed to refresh queue counts", {
+      logger.debug("connection", "Failed to refresh queue counts", {
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
@@ -367,6 +372,38 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       lastError: null,
       errorCount: 0,
     });
+  },
+
+  updateFirestoreConnectionState: (connected: boolean) => {
+    const previousState = get().firestoreConnected;
+    set({ firestoreConnected: connected });
+
+    logger.info(
+      "connection",
+      `Firestore connection state changed: ${connected}`,
+      {
+        previousState,
+        newState: connected,
+        timestamp: Date.now(),
+      }
+    );
+
+    // If Firestore just came back online and we have queued messages, trigger sync
+    if (connected && !previousState) {
+      const { queuedMessagesCount } = get();
+      if (queuedMessagesCount > 0) {
+        logger.info(
+          "connection",
+          "Firestore reconnected, scheduling queue processing",
+          {
+            queuedMessages: queuedMessagesCount,
+          }
+        );
+        setTimeout(() => {
+          get().triggerNetworkCallbacks();
+        }, 1000); // Small delay to ensure connection is stable
+      }
+    }
   },
 
   // Register a callback for network events (returns unsubscribe function)
@@ -413,7 +450,6 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
     if (networkEventCallbacks.size === 0) {
       logger.debug("network", "No network callbacks registered");
-      logger.debug("network", "No network callbacks registered");
       return;
     }
 
@@ -444,10 +480,6 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
           logger.error("network", `Network callback ${index + 1} failed`, {
             callbackIndex: index,
             error: errorMessage,
-          });
-          logger.error("network", `Network callback ${index + 1} failed`, {
-            callbackIndex: index,
-            error: errorMessage,
             timestamp: Date.now(),
           });
         }
@@ -460,7 +492,6 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       callbackCount: networkEventCallbacks.size,
       timestamp: Date.now(),
     });
-    logger.info("network", "All network callbacks completed");
   },
 }));
 

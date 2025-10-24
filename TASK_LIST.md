@@ -2,13 +2,13 @@
 
 ## 🎯 Project Overview
 
-**Goal**: Achieve 70-80 points on MessageAI Rubric  
+**Goal**: Build a production-ready messaging platform with AI features for international communicators  
 **Target Persona**: International Communicator  
 **Platform**: React Native + Expo Go + Firebase + AI Integration
 
 ---
 
-## 📱 Epic 1: Core Messaging Infrastructure (35 points)
+## 📱 Epic 1: Core Messaging Infrastructure
 
 _Priority: Phase 1 - Foundation First_
 
@@ -180,49 +180,88 @@ _Priority: Phase 1 - Foundation First_
   - Optimized FlatList props for smooth scrolling
   - **Acceptance**: Smooth performance with large message lists ✅
 
-### Epic 1.6: Offline Support & Persistence ✅ **COMPLETE**
+### Epic 1.6: Friends Subcollection & Online Presence ✅ **COMPLETE**
 
 #### Tasks:
 
-- [x] **1.6.1** Set up SQLite database
+- [x] **1.6.1** Implement scalable friend management
+
+  - Migrated from O(n) friendRequests scanning to O(1) subcollection lookups
+  - Created `/users/{uId}/friends/{friendId}` subcollection architecture
+  - Updated friendService to use subcollections instead of collection scans
+  - **Acceptance**: Friend lookups are O(1) and scale to millions of users ✅
+
+- [x] **1.6.2** Add online presence system
+
+  - Added `online: boolean` and `heartbeat: Timestamp` fields to User interface
+  - Implemented 30-second heartbeat mechanism with 40-second timeout
+  - Created presenceService singleton for heartbeat management
+  - **Acceptance**: Real-time online status with crash-resistant design ✅
+
+- [x] **1.6.3** Integrate app lifecycle with presence
+
+  - Added AppState listener for background/foreground transitions
+  - Integrated presence management into login/logout flows
+  - Implemented proper heartbeat start/stop on app state changes
+  - **Acceptance**: Online status updates automatically on app lifecycle changes ✅
+
+- [x] **1.6.4** Update friend request management
+
+  - Enhanced friend request system to work with subcollections
+  - Added real-time subscriptions for friend requests and friend subcollection changes
+  - Implemented bidirectional friend management with security rule compliance
+  - **Acceptance**: Friend requests work seamlessly with new subcollection architecture ✅
+
+- [x] **1.6.5** Add comprehensive friend request UI
+
+  - Created SentRequestCard component for outgoing friend requests
+  - Updated contacts tab to show both incoming and outgoing requests
+  - Implemented real-time tab badge updates for friend request counts
+  - **Acceptance**: Users can view and manage all friend request activity ✅
+
+### Epic 1.7: Offline Support & Persistence ✅ **COMPLETE**
+
+#### Tasks:
+
+- [x] **1.7.1** Set up SQLite database
 
   - Create sqliteService with proper schema
   - Implement message history storage
   - Add full-text search (FTS5) for messages
   - **Acceptance**: Messages are stored locally with search capability ✅
 
-- [x] **1.6.2** Implement AsyncStorage for preferences
+- [x] **1.7.2** Implement AsyncStorage for preferences
 
   - Store user preferences and settings
   - Cache auth tokens and session data
   - Handle simple app configuration
   - **Acceptance**: User preferences persist between sessions ✅
 
-- [x] **1.6.3** Build offline message queuing
+- [x] **1.7.3** Build offline message queuing
 
   - Queue messages when offline ✅ (SQLite queuing implemented)
   - Sync queued messages when online ✅ (syncQueuedMessages working)
   - Handle conflict resolution ✅ (implemented)
   - **Acceptance**: Messages are queued offline and synced when online ✅
 
-- [x] **1.6.4** Add auto-reconnection and sync
+- [x] **1.7.4** Add auto-reconnection and sync
   - Detect network status changes ✅ (NetInfo integration complete)
   - Automatically reconnect Firestore ✅ (using Firestore real-time listeners)
   - Sync missed messages from Firestore ✅ (syncQueuedMessages working)
   - **Acceptance**: App automatically syncs when connection restored ✅
 
-### Epic 1.7: Network Connectivity Visibility ✅ **COMPLETE**
+### Epic 1.8: Network Connectivity Visibility ✅ **COMPLETE**
 
 #### Tasks:
 
-- [x] **1.7.1** Create discreet network status indicator
+- [x] **1.8.1** Create discreet network status indicator
 
   - Small colored dot (green/gray/yellow/red) in top-right corner
   - Shows connected/idle/reconnecting/disconnected states
   - Non-intrusive design that doesn't block navigation
   - **Acceptance**: Users can see network status at a glance ✅
 
-- [x] **1.7.2** Add detailed network information modal
+- [x] **1.8.2** Add detailed network information modal
 
   - Click indicator to view comprehensive network status
   - Connection type, sync status, message queue info
@@ -230,14 +269,14 @@ _Priority: Phase 1 - Foundation First_
   - Last sync timestamp with proper formatting
   - **Acceptance**: Users can access detailed network information ✅
 
-- [x] **1.7.3** Implement manual sync controls
+- [x] **1.8.3** Implement manual sync controls
 
   - Refresh button for force sync/reconnect
   - Available both next to indicator and in modal
   - Disabled when offline or already syncing
   - **Acceptance**: Users can manually trigger sync when needed ✅
 
-- [x] **1.7.4** Add auto-sync intelligence
+- [x] **1.8.4** Add auto-sync intelligence
   - Triggers automatically when network reconnects
   - Proper status tracking (idle → syncing → synced/error)
   - Prevents infinite recursion with guard conditions
@@ -310,7 +349,7 @@ Zustand (In-Memory Window - Last 200 messages)
 
 ---
 
-## 📱 Epic 2: Mobile App Quality (20 points)
+## 📱 Epic 2: Mobile App Quality
 
 _Priority: Phase 1 - Foundation First_
 
@@ -325,9 +364,8 @@ _Priority: Phase 1 - Foundation First_
   - Queue messages when app is backgrounded
   - **Acceptance**: App handles background/foreground transitions properly
 
-- [ ] **2.1.2** Set up push notifications
+- [ ] **2.1.2** Set up (simulated) push notifications
 
-  - Configure Firebase Cloud Messaging
   - Implement notification handling
   - Add notification permissions
   - **Acceptance**: Users receive notifications for new messages
@@ -373,7 +411,7 @@ _Priority: Phase 1 - Foundation First_
 
 ---
 
-## 🔧 Epic 3: Technical Implementation (10 points)
+## 🔧 Epic 3: Technical Implementation
 
 _Priority: Phase 2 - Technical Polish_
 
@@ -415,81 +453,78 @@ Firestore (Authoritative Truth) → SQLite (Persistent Cache) → Zustand (Windo
 
 #### Tasks:
 
-- [x] **3.2.1** Implement unified queue-first architecture (3 points) ✅
+- [x] **3.2.1** Implement unified queue-first architecture ✅
 
   - Rename tempId to messageId throughout codebase ✅
   - Add UUID generation for all messages using Crypto.randomUUID() ✅ (superior to uuid package)
   - Implement single code path for online and offline (eliminate dual paths) ✅
   - **Acceptance**: All messages use unified queue-first flow with UUIDs ✅
 
-- [x] **3.2.2** Add three-tier data architecture (3 points) ✅
+- [x] **3.2.2** Add three-tier data architecture ✅
 
   - SQLite caches ALL messages (persistent storage) ✅
   - Zustand holds windowed view (100 messages max per conversation) ✅
   - Firestore remains authoritative truth ✅
   - **Acceptance**: Clear separation of concerns between data layers ✅
 
-- [x] **3.2.3** Implement UUID-based idempotency (2 points) ✅
+- [x] **3.2.3** Implement UUID-based idempotency ✅
 
   - Generate UUID upfront for all messages ✅
   - Use same ID throughout message lifecycle ✅
   - Multi-layer duplicate protection (Firestore + SQLite + UI) ✅
   - **Acceptance**: Messages cannot be duplicated during sync ✅
 
-- [x] **3.2.4** Add incremental sync mechanism (2 points) ✅
+- [x] **3.2.4** Add incremental sync mechanism ✅
 
   - Use lastSyncedAt to fetch only new messages ✅
   - Add Firestore composite index (conversationId, updatedAt) ✅
   - Implement getMessagesSince for efficient sync ✅
   - **Acceptance**: Only new messages are fetched during sync ✅
 
-- [x] **3.2.5** Create unified queue processor (2 points) ✅
+- [x] **3.2.5** Create unified queue processor ✅
 
   - Process queue with idempotency guarantees ✅
   - Add mutex to prevent concurrent processing ✅
   - Handle failed messages with retry count ✅
   - **Acceptance**: Queue processes automatically when online ✅
 
-- [x] **3.2.6** Implement conversation lifecycle management (2 points) ✅
+- [x] **3.2.6** Implement conversation lifecycle management ✅
 
   - Load recent 100 messages on conversation open ✅
   - Clear memory on conversation close (unloadConversationMessages) ✅
   - Implement lazy loading for conversations ✅
   - **Acceptance**: Memory usage stays bounded with conversation lifecycle ✅
 
-- [x] **3.2.7** Fix unnecessary SQLite queries on reconnection (1 point) ✅
+- [x] **3.2.7** Fix unnecessary SQLite queries on reconnection ✅
 
   - Modify syncMissedMessages() to only add NEW messages to Zustand ✅
   - Remove redundant loadRecentMessages calls during sync ✅
   - Keep existing Zustand state, only append new messages ✅
   - **Acceptance**: No unnecessary SQLite queries on network reconnection ✅
 
-- [x] **3.2.8** Test unified flow comprehensively (1 point) ✅
+- [x] **3.2.8** Test unified flow comprehensively ✅
+
   - Test offline → online → sync flow ✅
   - Test message deduplication with UUIDs ✅
   - Test incremental sync performance ✅
   - Test memory usage with multiple conversations ✅
   - **Acceptance**: All sync scenarios work correctly with optimized memory usage ✅
 
+- [x] **3.2.9** Implement sequential message processing ✅
+  - Replace batch processing with sequential processing to maintain message order ✅
+  - Process messages one by one to prevent race conditions ✅
+  - Maintain error handling with retry logic for failed messages ✅
+  - **Acceptance**: Messages are processed in exact order they were queued ✅
+
 **Key Changes from Original Epic 3.2**:
 
 1. **Memory Optimization Added**: Reduced MAX_MESSAGES_IN_MEMORY from 200 → 100, added conversation load/unload lifecycle, fixed unnecessary SQLite queries
-2. **Enhanced Testing**: Added memory usage testing with multiple conversations, performance validation for reconnection scenarios
-3. **Point Allocation**: Original Epic 3.2: 10 points + Memory optimization additions: 5 points = **Total Enhanced Epic 3.2: 15 points**
-
-**Files to Modify**:
-
-1. `package.json` - Add uuid dependency
-2. `types/Message.ts` - Add UUID documentation
-3. `firestore.indexes.json` - Add composite index (conversationId, updatedAt)
-4. `services/sqliteService.ts` - Rename tempId to messageId, add loadRecentMessages, sync metadata helpers
-5. `services/messageService.ts` - Add messageId param, idempotency, getMessagesSince
-6. `stores/messagesStore.ts` - Add MAX_MESSAGES_IN_MEMORY = 100, duplicate detection, unified flow, processQueue, syncMissedMessages, loadConversationMessages, unloadConversationMessages
-7. `stores/connectionStore.ts` - Call both processQueue and syncMissedMessages on reconnection with mutex
+2. **Sequential Processing**: Replaced batch processing with sequential processing to guarantee message ordering
+3. **Enhanced Testing**: Added memory usage testing with multiple conversations, performance validation for reconnection scenarios
 
 ---
 
-## 📚 Epic 4: Documentation & Deployment (5 points)
+## 📚 Epic 4: Documentation & Deployment
 
 _Priority: Phase 2 - Technical Polish_
 
@@ -545,7 +580,7 @@ _Priority: Phase 2 - Technical Polish_
 
 ---
 
-## 🤖 Epic 5: AI Features Implementation (30 points)
+## 🤖 Epic 5: AI Features Implementation
 
 _Priority: Phase 3 - AI Features_
 
@@ -695,12 +730,12 @@ _Priority: Phase 3 - Final Deliverables_
 
 ## 📊 Success Metrics
 
-- **Core Messaging Infrastructure**: 35/35 points ✅ (Epic 1.1-1.7 Complete)
-- **Mobile App Quality**: 0/20 points
-- **Technical Implementation**: 13/10 points ✅ (Auth & Data Management Complete, Epic 3.2 Complete + 3 bonus points)
-- **Documentation & Deployment**: 0/5 points
-- **AI Features Implementation**: 0/30 points
-- **Total Progress**: 48/100 points (48%)
+- **Core Messaging Infrastructure**: ✅ Complete (Epic 1.1-1.8 Complete)
+- **Mobile App Quality**: 🚧 In Progress
+- **Technical Implementation**: ✅ Complete (Auth & Data Management Complete, Epic 3.2 Complete)
+- **Documentation & Deployment**: 🚧 In Progress
+- **AI Features Implementation**: 🚧 In Progress
+- **Overall Progress**: Core infrastructure complete, ready for AI features and mobile quality improvements
 
 ---
 
@@ -708,7 +743,7 @@ _Priority: Phase 3 - Final Deliverables_
 
 ### Critical Path:
 
-1. ✅ Authentication (1.1) → Contact Management (1.2) → Messaging Core (1.4) → Message Features (1.5) → Offline Support (1.6) → Network Visibility (1.7) **COMPLETE**
+1. ✅ Authentication (1.1) → Contact Management (1.2) → Messaging Core (1.4) → Message Features (1.5) → Friends & Presence (1.6) → Offline Support (1.7) → Network Visibility (1.8) **COMPLETE**
 2. ✅ Data Management & Sync + Memory Optimization (3.2) **COMPLETE**
 3. 🚧 Mobile Lifecycle (2.1) → Performance (2.2) **NEXT**
 4. Foundation (Epics 1-2) → Technical Polish (Epics 3-4) → AI Features (Epics 5-6)

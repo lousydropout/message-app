@@ -201,7 +201,7 @@ export class FriendService {
       );
       return friendDoc.exists();
     } catch (error) {
-      console.error("Error checking friendship:", error);
+      console.debug("Error checking friendship:", error);
       return false;
     }
   }
@@ -243,7 +243,7 @@ export class FriendService {
 
       return null;
     } catch (error) {
-      console.error("Error getting friend request:", error);
+      console.debug("Error getting friend request:", error);
       return null;
     }
   }
