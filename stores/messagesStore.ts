@@ -1,6 +1,7 @@
 import conversationService from "@/services/conversationService";
 import messageService from "@/services/messageService";
 import sqliteService from "@/services/sqliteService";
+import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { logger } from "@/stores/loggerStore";
@@ -126,6 +127,23 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           } catch (error) {
             logger.error("messages", "Failed to save conversation to SQLite", {
               conversationId: conversation.id,
+              error: error instanceof Error ? error.message : "Unknown error",
+            });
+          }
+        }
+
+        // Pre-populate user profiles for all conversation participants
+        const allParticipantIds = new Set<string>();
+        conversations.forEach(conv => {
+          conv.participants.forEach(pid => allParticipantIds.add(pid));
+        });
+        
+        // Fetch and cache all participant profiles
+        if (allParticipantIds.size > 0) {
+          try {
+            await userService.getUsersByIds(Array.from(allParticipantIds));
+          } catch (error) {
+            logger.error("messages", "Failed to cache participant profiles", {
               error: error instanceof Error ? error.message : "Unknown error",
             });
           }

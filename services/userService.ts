@@ -1,5 +1,6 @@
 import { db } from "@/config/firebase";
-import { User } from "@/types/User";
+import sqliteService from "@/services/sqliteService";
+import { SupportedLanguageCode, User } from "@/types/User";
 import {
   collection,
   doc,
@@ -88,11 +89,21 @@ export class UserService {
    */
   async getUserProfile(userId: string): Promise<User | null> {
     try {
+      // Check local cache first
+      const localProfile = await sqliteService.getUserProfile(userId);
+      if (localProfile) {
+        return localProfile;
+      }
+
+      // Fallback to Firestore if online
       const userRef = doc(db, "users", userId);
       const userSnap = await getDoc(userRef);
 
       if (userSnap.exists()) {
-        return userSnap.data() as User;
+        const profile = userSnap.data() as User;
+        // Cache locally for future use
+        await sqliteService.saveUserProfile(profile);
+        return profile;
       }
       return null;
     } catch (error) {
@@ -106,7 +117,7 @@ export class UserService {
    */
   async updateLanguagePreferences(
     userId: string,
-    languages: string[]
+    languages: SupportedLanguageCode[]
   ): Promise<void> {
     try {
       await this.updateUserProfile(userId, { languagePreferences: languages });
@@ -258,13 +269,34 @@ export class UserService {
         return [];
       }
 
-      const usersQuery = query(
-        collection(db, "users"),
-        where("id", "in", userIds)
-      );
+      // Check local cache first
+      const localProfiles = await sqliteService.getUserProfiles(userIds);
+      const cachedIds = new Set(localProfiles.map((p) => p.id));
+      const missingIds = userIds.filter((id) => !cachedIds.has(id));
 
-      const querySnapshot = await getDocs(usersQuery);
-      return querySnapshot.docs.map((doc) => doc.data() as User);
+      let allProfiles = [...localProfiles];
+
+      // Fetch missing profiles from Firestore
+      if (missingIds.length > 0) {
+        const usersQuery = query(
+          collection(db, "users"),
+          where("id", "in", missingIds)
+        );
+
+        const querySnapshot = await getDocs(usersQuery);
+        const firestoreProfiles = querySnapshot.docs.map(
+          (doc) => doc.data() as User
+        );
+
+        // Cache the new profiles
+        for (const profile of firestoreProfiles) {
+          await sqliteService.saveUserProfile(profile);
+        }
+
+        allProfiles = [...allProfiles, ...firestoreProfiles];
+      }
+
+      return allProfiles;
     } catch (error) {
       console.error("Error getting users by IDs:", error);
       throw error;

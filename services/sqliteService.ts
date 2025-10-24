@@ -2,6 +2,7 @@
 import { Conversation } from "@/types/Conversation";
 import { Log, LogLevel } from "@/types/Log";
 import { Message } from "@/types/Message";
+import { User } from "@/types/User";
 import * as SQLite from "expo-sqlite";
 import { Timestamp } from "firebase/firestore";
 
@@ -32,6 +33,19 @@ interface SQLiteConversation {
   lastMessageSenderId: string | null;
   lastMessageTimestamp: number | null;
   unreadCounts: string | null; // JSON
+  syncedAt: number | null;
+}
+
+interface SQLiteUser {
+  id: string;
+  email: string;
+  displayName: string;
+  avatar: string | null;
+  languagePreferences: string; // JSON array
+  aiSettings: string; // JSON object
+  blockedUsers: string; // JSON array
+  createdAt: number;
+  lastSeen: number;
   syncedAt: number | null;
 }
 
@@ -201,6 +215,22 @@ class SQLiteService {
           unreadCounts TEXT,
           syncedAt INTEGER,
           FOREIGN KEY (lastMessageId) REFERENCES messages(id)
+        );
+      `);
+
+      // Create users table
+      await this.db.execAsync(`
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          email TEXT NOT NULL,
+          displayName TEXT NOT NULL,
+          avatar TEXT,
+          languagePreferences TEXT NOT NULL,
+          aiSettings TEXT NOT NULL,
+          blockedUsers TEXT NOT NULL,
+          createdAt INTEGER NOT NULL,
+          lastSeen INTEGER NOT NULL,
+          syncedAt INTEGER
         );
       `);
 
@@ -1480,6 +1510,101 @@ class SQLiteService {
       );
     } catch (error) {
       console.error("sqlite", "Error marking conversation as read:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save user profile to local cache
+   */
+  async saveUserProfile(user: User): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+    
+    try {
+      await this.db.runAsync(`
+        INSERT OR REPLACE INTO users (
+          id, email, displayName, avatar, languagePreferences,
+          aiSettings, blockedUsers, createdAt, lastSeen, syncedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        user.id,
+        user.email,
+        user.displayName,
+        user.avatar || null,
+        JSON.stringify(user.languagePreferences),
+        JSON.stringify(user.aiSettings),
+        JSON.stringify(user.blockedUsers),
+        user.createdAt.toMillis(),
+        user.lastSeen.toMillis(),
+        Date.now()
+      ]);
+    } catch (error) {
+      console.error("sqlite", "Error saving user profile:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user profile from local cache
+   */
+  async getUserProfile(userId: string): Promise<User | null> {
+    if (!this.db) throw new Error("Database not initialized");
+    
+    try {
+      const row = await this.db.getFirstAsync<SQLiteUser>(
+        "SELECT * FROM users WHERE id = ?",
+        [userId]
+      );
+      
+      if (!row) return null;
+      
+      return {
+        id: row.id,
+        email: row.email,
+        displayName: row.displayName,
+        avatar: row.avatar || undefined,
+        languagePreferences: JSON.parse(row.languagePreferences),
+        aiSettings: JSON.parse(row.aiSettings),
+        blockedUsers: JSON.parse(row.blockedUsers),
+        createdAt: Timestamp.fromMillis(row.createdAt),
+        lastSeen: Timestamp.fromMillis(row.lastSeen),
+      };
+    } catch (error) {
+      console.error("sqlite", "Error getting user profile:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get multiple user profiles from local cache
+   */
+  async getUserProfiles(userIds: string[]): Promise<User[]> {
+    if (!this.db) throw new Error("Database not initialized");
+    
+    try {
+      if (userIds.length === 0) {
+        return [];
+      }
+      
+      const placeholders = userIds.map(() => '?').join(',');
+      const rows = await this.db.getAllAsync<SQLiteUser>(
+        `SELECT * FROM users WHERE id IN (${placeholders})`,
+        userIds
+      );
+      
+      return rows.map(row => ({
+        id: row.id,
+        email: row.email,
+        displayName: row.displayName,
+        avatar: row.avatar || undefined,
+        languagePreferences: JSON.parse(row.languagePreferences),
+        aiSettings: JSON.parse(row.aiSettings),
+        blockedUsers: JSON.parse(row.blockedUsers),
+        createdAt: Timestamp.fromMillis(row.createdAt),
+        lastSeen: Timestamp.fromMillis(row.lastSeen),
+      }));
+    } catch (error) {
+      console.error("sqlite", "Error getting user profiles:", error);
       throw error;
     }
   }
