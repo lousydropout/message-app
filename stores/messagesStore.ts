@@ -12,7 +12,7 @@ import { Unsubscribe } from "firebase/firestore";
 import { create } from "zustand";
 
 // Constants
-const MAX_MESSAGES_IN_MEMORY = 100; // Window size per conversation (reduced from 200)
+const MAX_MESSAGES_IN_MEMORY = 10000; // Window size per conversation
 
 // Mutex to prevent concurrent queue processing
 let queueProcessingMutex = false;
@@ -39,6 +39,13 @@ export interface MessagesState {
     messages?: Unsubscribe;
     typing?: Unsubscribe;
   };
+  paginationState: Record<
+    string,
+    {
+      hasMoreMessages: boolean;
+      isLoadingOlder: boolean;
+    }
+  >;
 
   // Actions
   loadConversations: (userId: string) => Promise<void>;
@@ -63,6 +70,7 @@ export interface MessagesState {
   clearSubscriptions: () => void;
   clearAllData: () => void;
   getTotalUnreadCount: (userId: string) => number;
+  loadOlderMessages: (conversationId: string) => Promise<void>;
 }
 
 export const useMessagesStore = create<MessagesState>((set, get) => ({
@@ -73,6 +81,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   loading: false,
   sendingMessage: false,
   subscriptions: {},
+  paginationState: {},
 
   async loadConversations(userId: string) {
     set({ loading: true });
@@ -1146,6 +1155,13 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         ...state.messages,
         [conversationId]: messages,
       },
+      paginationState: {
+        ...state.paginationState,
+        [conversationId]: {
+          hasMoreMessages: messages.length === MAX_MESSAGES_IN_MEMORY,
+          isLoadingOlder: false,
+        },
+      },
     }));
     const zustandEndTime = Date.now();
     logger.info(
@@ -1172,6 +1188,85 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
     const totalTime = Date.now() - startTime;
     logger.info("messages", `✅ Conversation load completed in ${totalTime}ms`);
+  },
+
+  async loadOlderMessages(conversationId: string) {
+    const state = get();
+    const paginationState = state.paginationState[conversationId];
+
+    if (!paginationState?.hasMoreMessages || paginationState.isLoadingOlder) {
+      return;
+    }
+
+    // Set loading state
+    set((state) => ({
+      paginationState: {
+        ...state.paginationState,
+        [conversationId]: {
+          ...state.paginationState[conversationId],
+          isLoadingOlder: true,
+        },
+      },
+    }));
+
+    try {
+      const currentMessages = state.messages[conversationId] || [];
+
+      // Load older messages from SQLite using offset
+      const olderMessages = await sqliteService.getMessages(
+        conversationId,
+        100, // Load 100 more messages
+        currentMessages.length // Offset by current message count
+      );
+
+      if (olderMessages.length === 0) {
+        // No more messages to load
+        set((state) => ({
+          paginationState: {
+            ...state.paginationState,
+            [conversationId]: {
+              ...state.paginationState[conversationId],
+              hasMoreMessages: false,
+              isLoadingOlder: false,
+            },
+          },
+        }));
+        return;
+      }
+
+      // Merge older messages with existing ones
+      const allMessages = [...currentMessages, ...olderMessages];
+
+      set((state) => ({
+        messages: {
+          ...state.messages,
+          [conversationId]: allMessages,
+        },
+        paginationState: {
+          ...state.paginationState,
+          [conversationId]: {
+            hasMoreMessages: olderMessages.length === 100, // If we got exactly 100, there might be more
+            isLoadingOlder: false,
+          },
+        },
+      }));
+
+      logger.info(
+        "messages",
+        `Loaded ${olderMessages.length} older messages for ${conversationId}`
+      );
+    } catch (error) {
+      logger.error("messages", "Error loading older messages:", error);
+      set((state) => ({
+        paginationState: {
+          ...state.paginationState,
+          [conversationId]: {
+            ...state.paginationState[conversationId],
+            isLoadingOlder: false,
+          },
+        },
+      }));
+    }
   },
 
   async syncNewMessagesForConversation(conversationId: string) {

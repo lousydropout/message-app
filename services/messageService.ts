@@ -144,7 +144,7 @@ class MessageService {
 
   async getMessages(
     conversationId: string,
-    limitCount: number = 50,
+    limitCount: number = 10000,
     startAfterDoc?: DocumentSnapshot
   ): Promise<Message[]> {
     try {

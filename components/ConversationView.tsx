@@ -58,10 +58,13 @@ export function ConversationView({
     updateTyping,
     loadConversationMessages,
     unloadConversationMessages,
+    loadOlderMessages,
+    paginationState,
   } = useMessagesStore();
 
   const conversationMessages = messages[conversationId] || [];
   const conversationTypingUsers = typingUsers[conversationId] || [];
+  const conversationPaginationState = paginationState[conversationId];
 
   // Load participant profiles for the conversation
   useEffect(() => {
@@ -343,6 +346,16 @@ export function ConversationView({
     );
   };
 
+  const renderLoadingOlder = () => {
+    if (!conversationPaginationState?.isLoadingOlder) return null;
+
+    return (
+      <View style={styles.loadingOlderContainer}>
+        <Text style={styles.loadingOlderText}>Loading older messages...</Text>
+      </View>
+    );
+  };
+
   const getConversationTitle = () => {
     if (!conversation) return "Conversation";
 
@@ -425,7 +438,19 @@ export function ConversationView({
           keyExtractor={(item) => item.id}
           removeClippedSubviews={false}
           ListHeaderComponent={renderTypingIndicator}
+          ListFooterComponent={renderLoadingOlder}
           contentContainerStyle={styles.messagesContent}
+          onEndReached={() => {
+            // onEndReached is called when reaching the end of the list
+            // Since we reverse the data, this is actually the "top" (oldest messages)
+            if (
+              conversationPaginationState?.hasMoreMessages &&
+              !conversationPaginationState.isLoadingOlder
+            ) {
+              loadOlderMessages(conversationId);
+            }
+          }}
+          onEndReachedThreshold={0.1} // Trigger when 10% from the end
           onContentSizeChange={() => {
             const renderEndTime = Date.now();
             logger.info(
@@ -743,5 +768,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#007AFF",
     fontWeight: "500",
+  },
+  loadingOlderContainer: {
+    padding: 16,
+    alignItems: "center",
+    backgroundColor: "#F2F2F7",
+  },
+  loadingOlderText: {
+    color: "#666",
+    fontSize: 14,
   },
 });

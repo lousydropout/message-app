@@ -1136,7 +1136,7 @@ class SQLiteService {
    */
   async loadRecentMessages(
     conversationId: string,
-    limit: number = 200
+    limit: number = 10000
   ): Promise<Message[]> {
     if (!this.db) throw new Error("Database not initialized");
 
