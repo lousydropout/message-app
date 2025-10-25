@@ -18,13 +18,13 @@ if (__DEV__) {
 }
 
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-  // measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
+  apiKey: "AIzaSyBkKKPJFb-I-A_0HLizXRiWoG0ULpi1b80",
+  authDomain: "messageai2.firebaseapp.com",
+  databaseURL: "https://messageai2-default-rtdb.firebaseio.com",
+  projectId: "messageai2",
+  storageBucket: "messageai2.firebasestorage.app",
+  messagingSenderId: "799591897749",
+  appId: "1:799591897749:web:5f485911d1f8988915599c",
 };
 
 const app = initializeApp(firebaseConfig);

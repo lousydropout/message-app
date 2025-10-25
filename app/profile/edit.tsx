@@ -16,7 +16,9 @@ export default function ProfileEditScreen() {
   const router = useRouter();
   const { userProfile, updateProfile, loading, logout } = useAuthStore();
 
-  const [languagePreferences, setLanguagePreferences] = useState<string[]>([]);
+  const [languagePreferences, setLanguagePreferences] = useState<
+    SupportedLanguageCode[]
+  >([]);
   const [aiSettings, setAiSettings] = useState({
     autoTranslate: true,
     culturalHints: true,

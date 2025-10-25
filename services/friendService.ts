@@ -153,8 +153,8 @@ export class FriendService {
 
       // Sort by createdAt on the client side to avoid composite index requirement
       return requests.sort((a, b) => {
-        const aTime = a.createdAt.toDate ? a.createdAt.toDate().getTime() : 0;
-        const bTime = b.createdAt.toDate ? b.createdAt.toDate().getTime() : 0;
+        const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+        const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
         return bTime - aTime; // Descending order
       });
     } catch (error) {
@@ -181,8 +181,8 @@ export class FriendService {
 
       // Sort by createdAt on the client side to avoid composite index requirement
       return requests.sort((a, b) => {
-        const aTime = a.createdAt.toDate ? a.createdAt.toDate().getTime() : 0;
-        const bTime = b.createdAt.toDate ? b.createdAt.toDate().getTime() : 0;
+        const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+        const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
         return bTime - aTime; // Descending order
       });
     } catch (error) {

@@ -12,10 +12,12 @@ import { logger, useLoggerStore } from "@/stores/loggerStore";
 import { LogLevel } from "@/types/Log";
 import { Message } from "@/types/Message";
 import * as Clipboard from "expo-clipboard";
+import { getAuth } from "firebase/auth";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Button,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -30,6 +32,16 @@ export default function DiagnosticsScreen() {
   const [results, setResults] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [indexes, setIndexes] = useState<string[]>([]);
+
+  // API Test Modal state
+  const [apiModalVisible, setApiModalVisible] = useState(false);
+  const [apiResponse, setApiResponse] = useState<string>("");
+  const [apiLoading, setApiLoading] = useState(false);
+
+  // Translation Test Modal state
+  const [translateModalVisible, setTranslateModalVisible] = useState(false);
+  const [translateResponse, setTranslateResponse] = useState<string>("");
+  const [translateLoading, setTranslateLoading] = useState(false);
 
   // Logs state
   const [selectedLogLevel, setSelectedLogLevel] = useState<
@@ -880,6 +892,194 @@ export default function DiagnosticsScreen() {
     }
   }, [logger]);
 
+  // API Test Function
+  const testApiRequest = React.useCallback(async () => {
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+
+    if (!apiUrl) {
+      Alert.alert(
+        "Error",
+        "EXPO_PUBLIC_API_URL environment variable is not set"
+      );
+      return;
+    }
+
+    setApiLoading(true);
+    setApiModalVisible(true);
+    setApiResponse("Loading...");
+
+    try {
+      // Step 1: Get the current user's Firebase ID token
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error("User not signed in");
+      }
+
+      logger.info("api", `🔐 Getting Firebase ID token for user: ${user.uid}`);
+      const idToken = await user.getIdToken(); // Signed JWT
+
+      logger.info(
+        "api",
+        `🌐 Making authenticated GET request to: ${apiUrl}/auth/check`
+      );
+
+      // Step 2: Call the Lambda endpoint with authentication
+      const response = await fetch(`${apiUrl}/auth/check`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const responseText = await response.text();
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        responseData = responseText;
+      }
+
+      logger.info("api", `✅ API Response (${response.status}):`, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: responseData,
+      });
+
+      // Step 3: Handle response
+      let responseDisplay = `Status: ${response.status} ${
+        response.statusText
+      }\n\nHeaders:\n${JSON.stringify(
+        Object.fromEntries(response.headers.entries()),
+        null,
+        2
+      )}\n\nBody:\n${JSON.stringify(responseData, null, 2)}`;
+
+      if (responseData && typeof responseData === "object") {
+        if (responseData.authenticated) {
+          responseDisplay += `\n\n✅ Verified user: ${responseData.uid}`;
+        } else {
+          responseDisplay += `\n\n⚠️ User not authenticated: ${
+            responseData.error || "Unknown error"
+          }`;
+        }
+      }
+
+      setApiResponse(responseDisplay);
+    } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      logger.error("api", `❌ Auth check failed:`, {
+        error: errorMessage,
+        url: `${apiUrl}/auth/check`,
+      });
+      setApiResponse(`Error: ${errorMessage}`);
+    } finally {
+      setApiLoading(false);
+    }
+  }, [logger]);
+
+  // Translation Test Function
+  const testTranslationRequest = React.useCallback(async () => {
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+
+    if (!apiUrl) {
+      Alert.alert(
+        "Error",
+        "EXPO_PUBLIC_API_URL environment variable is not set"
+      );
+      return;
+    }
+
+    setTranslateLoading(true);
+    setTranslateModalVisible(true);
+    setTranslateResponse("Loading...");
+
+    try {
+      // Step 1: Get the current user's Firebase ID token
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error("User not signed in");
+      }
+
+      logger.info("api", `🔐 Getting Firebase ID token for user: ${user.uid}`);
+      const idToken = await user.getIdToken(); // Signed JWT
+
+      // Sample French text for translation
+      const requestBody = {
+        language: "English",
+        content:
+          "Bonjour, comment allez-vous aujourd'hui ? J'espère que vous passez une excellente journée. Le temps est magnifique, n'est-ce pas ?",
+      };
+
+      logger.info("api", `🌐 Making POST request to: ${apiUrl}/translate`);
+
+      // Step 2: Call the translation endpoint
+      const response = await fetch(`${apiUrl}/translate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const responseText = await response.text();
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        responseData = responseText;
+      }
+
+      logger.info("api", `✅ Translation Response (${response.status}):`, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: responseData,
+      });
+
+      // Step 3: Handle response
+      let responseDisplay = `Status: ${response.status} ${
+        response.statusText
+      }\n\nHeaders:\n${JSON.stringify(
+        Object.fromEntries(response.headers.entries()),
+        null,
+        2
+      )}\n\nBody:\n${JSON.stringify(responseData, null, 2)}`;
+
+      if (responseData && typeof responseData === "object") {
+        if (responseData.translated_text) {
+          responseDisplay += `\n\n✅ Translation successful!`;
+          responseDisplay += `\n\nOriginal (${responseData.original_language}): ${responseData.original_text}`;
+          responseDisplay += `\n\nTranslated (${responseData.target_language}): ${responseData.translated_text}`;
+          if (responseData.cultural_notes) {
+            responseDisplay += `\n\nCultural Notes: ${responseData.cultural_notes}`;
+          }
+        } else {
+          responseDisplay += `\n\n⚠️ Translation failed: ${
+            responseData.error || "Unknown error"
+          }`;
+        }
+      }
+
+      setTranslateResponse(responseDisplay);
+    } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      logger.error("api", `❌ Translation request failed:`, {
+        error: errorMessage,
+        url: `${apiUrl}/translate`,
+      });
+      setTranslateResponse(`Error: ${errorMessage}`);
+    } finally {
+      setTranslateLoading(false);
+    }
+  }, [logger]);
+
   return (
     <ScrollView style={styles.container}>
       {/* System Logs Section */}
@@ -1163,6 +1363,84 @@ export default function DiagnosticsScreen() {
           real-time subscriptions with error handling
         </Text>
       </View>
+
+      {/* API Test Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>🌐 API Tests</Text>
+        <Text style={styles.helpText}>
+          Test authenticated API endpoints with Firebase ID token:
+          {"\n"}• Auth Check: GET /auth/check
+          {"\n"}• Translation: POST /translate (French → English)
+        </Text>
+
+        <Button
+          title="🔐 Test Auth API"
+          onPress={testApiRequest}
+          color="blue"
+        />
+
+        <Button
+          title="🌍 Test Translation API"
+          onPress={testTranslationRequest}
+          color="green"
+        />
+      </View>
+
+      {/* API Response Modal */}
+      <Modal
+        visible={apiModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setApiModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Auth API Response</Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setApiModalVisible(false)}
+              >
+                <Text style={styles.modalCloseButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <Text style={styles.apiResponseText}>
+                {apiLoading ? "Loading..." : apiResponse}
+              </Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Translation Response Modal */}
+      <Modal
+        visible={translateModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setTranslateModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Translation API Response</Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setTranslateModalVisible(false)}
+              >
+                <Text style={styles.modalCloseButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <Text style={styles.apiResponseText}>
+                {translateLoading ? "Loading..." : translateResponse}
+              </Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -1345,5 +1623,60 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: "monospace",
     color: "#495057",
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    margin: 20,
+    maxHeight: "80%",
+    width: "90%",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e9ecef",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#212529",
+  },
+  modalCloseButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: "#f8f9fa",
+  },
+  modalCloseButtonText: {
+    fontSize: 16,
+    color: "#6c757d",
+    fontWeight: "bold",
+  },
+  modalBody: {
+    padding: 20,
+    maxHeight: 400,
+  },
+  apiResponseText: {
+    fontSize: 12,
+    fontFamily: "monospace",
+    color: "#212529",
+    lineHeight: 16,
   },
 });
