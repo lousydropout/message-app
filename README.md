@@ -101,16 +101,17 @@ A React Native messaging smart phone application with AI-powered features for in
 
    - Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
    - Enable Firestore Database and Authentication (email/password)
-   - Copy `.env.template` to `.env.local` and fill in your Firebase config:
+   - Copy `.env.template` to `.env` and fill in your Firebase config:
 
    ```bash
-   cp .env.template .env.local
+   cp .env.template .env
    ```
 
-   Then edit `.env.local` with your Firebase project details:
+   Then edit `.env` with your Firebase project details:
 
    ```bash
    # Firebase Configuration
+   FIREBASE_PROJECT_ID=
    EXPO_PUBLIC_FIREBASE_API_KEY=your-api-key-here
    EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
    EXPO_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
@@ -118,6 +119,10 @@ A React Native messaging smart phone application with AI-powered features for in
    EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789
    EXPO_PUBLIC_FIREBASE_APP_ID=your-app-id
    EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID=your-measurement-id
+   EXPO_PUBLIC_DATABASE_URL=your-firestore-url
+
+   # From the AWS CDK deployment in `server/`
+   EXPO_PUBLIC_API_URL=your-api-server-url
    ```
 
 3. **Deploy Firestore Security Rules**
@@ -570,6 +575,75 @@ MessageAI implements a sophisticated **unified queue-first architecture** that e
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+## 🔐 Secure AI Translation Architecture
+
+MessageAI implements a secure AI translation system that protects API keys while providing real-time translation and cultural context for international communicators.
+
+### Security-First Design
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    SECURE AI TRANSLATION FLOW                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                    MESSAGEAI APP                           │ │
+│  │                                                            │ │
+│  │  User Types Message → Translation Request → API Server     │ │
+│  │                                                            │ │
+│  │  • No API keys stored in app                              │ │
+│  │  • Firebase ID token for authentication                   │ │
+│  │  • Secure HTTPS communication                             │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                  API SERVER (AWS Lambda)                   │ │
+│  │                                                            │ │
+│  │  1. Firebase Admin Authentication                          │ │
+│  │     • Verifies Firebase ID token                           │ │
+│  │     • Confirms user is authenticated                       │ │
+│  │                                                            │ │
+│  │  2. OpenAI API Integration                                 │ │
+│  │     • Secure API key storage (server-side only)           │ │
+│  │     • GPT-4o-mini for translation + cultural context      │ │
+│  │                                                            │ │
+│  │  3. Response Format                                        │ │
+│  │     • Translation result                                   │ │
+│  │     • Cultural context and formality notes                │ │
+│  │     • JSON response to MessageAI                           │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### API Server Features
+
+- **Firebase Admin Authentication**: Verifies user identity using Firebase ID tokens
+- **Secure API Key Management**: OpenAI API key stored server-side, never exposed to client
+- **Translation & Cultural Context**: Uses GPT-4o-mini for accurate translations with cultural notes
+- **AWS Lambda Deployment**: Serverless architecture for cost-effective scaling
+- **HTTPS Security**: All communication encrypted in transit
+
+### Translation Request Flow
+
+1. **User Input**: User types message in MessageAI app
+2. **Authentication**: App sends Firebase ID token with translation request
+3. **Server Validation**: API Server verifies token using Firebase Admin SDK
+4. **LLM Processing**: Server queries OpenAI GPT-4o-mini with secure API key
+5. **Response**: Server returns translation and cultural context to app
+6. **Display**: MessageAI shows translation and cultural notes to user
+
+### Environment Configuration
+
+The API Server URL is configured in your `.env` file:
+
+```bash
+# From the AWS CDK deployment in `server/`
+EXPO_PUBLIC_API_URL=your-api-server-url
+```
+
+For detailed API Server setup and deployment, see the [`server/README.md`](server/README.md).
+
 ### Technology Stack
 
 - **Frontend**: React Native 0.81.4 + Expo ~54.0.13
@@ -578,7 +652,7 @@ MessageAI implements a sophisticated **unified queue-first architecture** that e
 - **Local Database**: SQLite (expo-sqlite) + AsyncStorage
 - **Navigation**: Expo Router ~6.0.12 (file-based routing)
 - **Real-time**: Firestore onSnapshot listeners
-- **AI Integration**: OpenAI API (via Firebase Functions)
+- **AI Integration**: OpenAI API (via secure API Server)
 - **Performance**: FlashList for optimized list rendering
 - **TypeScript**: Full type safety throughout
 
@@ -690,13 +764,13 @@ interface FriendRequest {
    - Push notifications
    - Performance optimization
 
-2. **AI Features**
+2. **AI Features** (API Server Ready)
 
-   - Real-time translation
-   - Cultural context hints
-   - Formality adjustment
-   - Language detection
-   - Slang/idiom explanations
+   - Real-time translation via secure API Server
+   - Cultural context hints and formality adjustment
+   - Language detection and slang/idiom explanations
+   - Firebase Admin authentication for secure access
+   - OpenAI GPT-4o-mini integration for accurate translations
 
 3. **Documentation**
    - Comprehensive README
