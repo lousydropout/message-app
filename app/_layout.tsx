@@ -10,6 +10,7 @@ import { AppState } from "react-native";
 import "react-native-reanimated";
 
 import NetworkStatusBar from "@/components/NetworkStatusBar";
+import Toast from "@/components/Toast";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import presenceService from "@/services/presenceService";
 import sqliteService from "@/services/sqliteService";
@@ -161,6 +162,7 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <NetworkStatusBar />
+      <Toast />
       <Stack>
         <Stack.Screen name="auth/login" options={{ headerShown: false }} />
         <Stack.Screen

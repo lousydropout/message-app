@@ -5,6 +5,7 @@ import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { logger } from "@/stores/loggerStore";
+import { useToastStore } from "@/stores/toastStore";
 import { useUsersStore } from "@/stores/usersStore";
 import { Conversation } from "@/types/Conversation";
 import { Message } from "@/types/Message";
@@ -127,6 +128,63 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             unreadCounts: c.unreadCounts,
           }))
         );
+
+        // Check for new messages to show toast
+        const { currentConversationId } = get();
+        const { addToast } = useToastStore.getState();
+        const { user } = useAuthStore.getState();
+
+        // Get previous conversations to detect changes
+        const { conversations: previousConversations } = get();
+
+        // Create a map of previous conversations for quick lookup
+        const previousConversationsMap = new Map(
+          previousConversations.map((conv) => [conv.id, conv])
+        );
+
+        // Check each conversation for new messages
+        for (const conversation of conversations) {
+          const previousConversation = previousConversationsMap.get(
+            conversation.id
+          );
+
+          // Only show toast if:
+          // 1. User is not currently viewing this conversation
+          // 2. This conversation has a lastMessage
+          // 3. The lastMessage is different from the previous one (new message)
+          // 4. The message is not from the current user
+          if (
+            currentConversationId !== conversation.id &&
+            conversation.lastMessage &&
+            conversation.lastMessage.senderId !== user?.uid &&
+            (!previousConversation?.lastMessage ||
+              previousConversation.lastMessage.id !==
+                conversation.lastMessage.id)
+          ) {
+            try {
+              // Get sender profile
+              const senderProfile = await userService.getUserProfile(
+                conversation.lastMessage.senderId
+              );
+              const senderName = senderProfile?.displayName || "Unknown User";
+
+              addToast({
+                type: "message",
+                title: senderName,
+                message: conversation.lastMessage.text,
+                conversationId: conversation.id,
+                senderId: conversation.lastMessage.senderId,
+                senderName,
+              });
+            } catch (error) {
+              logger.error(
+                "messages",
+                "Error getting sender profile for toast:",
+                error
+              );
+            }
+          }
+        }
 
         // Update conversations state
         set({ conversations });

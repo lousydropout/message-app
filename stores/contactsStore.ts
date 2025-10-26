@@ -2,6 +2,7 @@ import { db } from "@/config/firebase";
 import friendService from "@/services/friendService";
 import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
+import { useToastStore } from "@/stores/toastStore";
 import { useUsersStore } from "@/stores/usersStore";
 import { FriendRequest } from "@/types/FriendRequest";
 import { User } from "@/types/User";
@@ -287,11 +288,43 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
 
     const unsubscribe = onSnapshot(
       friendRequestsQuery,
-      (snapshot) => {
+      async (snapshot) => {
         const requests: FriendRequest[] = [];
+        const { addToast } = useToastStore.getState();
+
+        // Process all documents first
         snapshot.forEach((doc) => {
           requests.push({ id: doc.id, ...doc.data() } as FriendRequest);
         });
+
+        // Check for new friend requests using docChanges
+        for (const docChange of snapshot.docChanges()) {
+          if (docChange.type === "added") {
+            const requestData = docChange.doc.data() as FriendRequest;
+
+            try {
+              // Get sender profile
+              const senderProfile = await userService.getUserProfile(
+                requestData.fromUserId
+              );
+              const senderName = senderProfile?.displayName || "Unknown User";
+
+              addToast({
+                type: "friend_request",
+                title: "Friend Request",
+                message: `${senderName} sent you a friend request`,
+                senderId: requestData.fromUserId,
+                senderName,
+              });
+            } catch (error) {
+              console.error(
+                "Error getting sender profile for friend request toast:",
+                error
+              );
+            }
+          }
+        }
+
         set({ friendRequests: requests });
       },
       (error) => {
@@ -336,9 +369,36 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     const unsubscribe = onSnapshot(
       acceptedRequestsQuery,
       async (snapshot) => {
+        const { addToast } = useToastStore.getState();
+
         for (const docSnapshot of snapshot.docChanges()) {
           if (docSnapshot.type === "added" || docSnapshot.type === "modified") {
             const requestData = docSnapshot.doc.data();
+
+            // Show toast for accepted friend requests (when status changes to accepted)
+            if (docSnapshot.type === "modified") {
+              try {
+                // Get recipient profile
+                const recipientProfile = await userService.getUserProfile(
+                  requestData.toUserId
+                );
+                const recipientName =
+                  recipientProfile?.displayName || "Unknown User";
+
+                addToast({
+                  type: "friend_accepted",
+                  title: "Friend Request Accepted",
+                  message: `${recipientName} accepted your friend request`,
+                  senderId: requestData.toUserId,
+                  senderName: recipientName,
+                });
+              } catch (error) {
+                console.error(
+                  "Error getting recipient profile for friend accepted toast:",
+                  error
+                );
+              }
+            }
 
             // Add the friend to the current user's friends subcollection
             try {

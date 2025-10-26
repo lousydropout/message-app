@@ -319,7 +319,7 @@ ${content}
       throw new Error("Invalid response structure from translation service");
     }
 
-    // Return the complete translation result
+    // Return the complete translation results
     const finalResult = {
       original_text: content,
       original_language: translationResult.original_language,
