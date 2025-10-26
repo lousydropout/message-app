@@ -169,10 +169,13 @@ interface FriendRequest {
 
 - **Subcollection Architecture**: 50% reduction in Firestore operations
 - **O(1) Friend Lookups**: Constant time instead of linear scans
-- **Memory Management**: Windowed conversation loading
+- **Memory Management**: Windowed conversation loading (100 messages max per conversation)
 - **Incremental Sync**: Only fetch new messages since last sync
-- **SQLite Caching**: Local persistence for offline support
+- **SQLite Caching**: Local persistence for offline support and battery optimization
 - **Real-time Subscriptions**: Efficient Firestore listeners with proper cleanup
+- **Battery Optimization**: SQLite caching reduces Firebase queries and network usage
+- **Optimized Re-rendering**: Memoization and FlashList for performance
+- **Toast Notifications**: User feedback system (Expo Go equivalent of push notifications)
 
 ### Scalability Considerations
 

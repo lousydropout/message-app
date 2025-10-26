@@ -39,13 +39,22 @@
 - **Connection Management**: Automatic reconnection and health monitoring
 - **Message Queuing**: SQLite for offline message queuing and persistence
 
-### AI Integration (Planned)
+### Mobile Lifecycle Management
 
-- **OpenAI API**: GPT-4o-mini with function calling capabilities
-- **Server-side Processing**: Firebase Cloud Functions for API security
-- **RAG Pipeline**: Conversation context retrieval and augmentation
-- **Rate Limiting**: Per-user API call limits and quotas
-- **Response Streaming**: Real-time AI response delivery
+- **AppState Listeners**: Background/foreground handling for presence management
+- **Toast Notifications**: User feedback system (Expo Go equivalent of push notifications)
+- **Battery Optimization**: SQLite caching reduces Firebase queries and network usage
+- **Optimized Re-rendering**: Memoization and FlashList for performance
+- **Message Persistence**: SQLite storage for offline messages during app transitions
+
+### AI Integration (Implemented)
+
+- **OpenAI API**: GPT-4o-mini with translation capabilities
+- **Server-side Processing**: AWS Lambda for API security and scalability
+- **Translation Features**: Real-time translation with language detection and cultural context
+- **API Response**: Comprehensive translation including original language, translated text, and cultural notes
+- **Client Integration**: MessageBubble component with translation modal
+- **Authentication**: Firebase ID token authentication for secure API access
 
 ## Note for handling the SQLite library
 
