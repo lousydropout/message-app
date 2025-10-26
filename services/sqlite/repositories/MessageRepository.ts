@@ -431,18 +431,27 @@ export class MessageRepository {
         let params: any[];
 
         if (conversationId) {
-          sql = `SELECT m.id, m.conversationId, m.text, m.timestamp, m.senderId
-                 FROM messages_fts fts
-                 JOIN messages m ON fts.rowid = m.rowid
-                 WHERE messages_fts MATCH ? AND m.conversationId = ?
+          sql = `WITH fts_results AS (
+                   SELECT rowid
+                   FROM messages_fts
+                   WHERE messages_fts MATCH ?
+                 )
+                 SELECT m.id, m.conversationId, m.text, m.timestamp, m.senderId
+                 FROM messages m
+                 JOIN fts_results f ON m.rowid = f.rowid
+                 WHERE m.conversationId = ?
                  ORDER BY m.timestamp DESC
                  LIMIT ?`;
           params = [searchQuery, conversationId, limit];
         } else {
-          sql = `SELECT m.id, m.conversationId, m.text, m.timestamp, m.senderId
-                 FROM messages_fts fts
-                 JOIN messages m ON fts.rowid = m.rowid
-                 WHERE messages_fts MATCH ?
+          sql = `WITH fts_results AS (
+                   SELECT rowid
+                   FROM messages_fts
+                   WHERE messages_fts MATCH ?
+                 )
+                 SELECT m.id, m.conversationId, m.text, m.timestamp, m.senderId
+                 FROM messages m
+                 JOIN fts_results f ON m.rowid = f.rowid
                  ORDER BY m.timestamp DESC
                  LIMIT ?`;
           params = [searchQuery, limit];

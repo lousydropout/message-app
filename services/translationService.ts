@@ -11,25 +11,81 @@ import { Message } from "@/types/Message";
 import { MiniGraph } from "@/utils/miniGraph";
 import { getAuth } from "firebase/auth";
 
+// -----------------------------------------------------------------------------
+// 🔹 Types
+// -----------------------------------------------------------------------------
+export interface TranslationStatus {
+  phase: "translating" | "searching" | "resubmitting" | "complete";
+  message: string;
+  searchTerms?: string[];
+  reason?: string;
+  progress?: { current: number; total: number };
+}
+
+interface TranslationResponse {
+  type: "translation";
+  original_language: string;
+  translated_text: string;
+  cultural_notes: string;
+  references_earlier: boolean;
+  reference_detail: string;
+  confidence: number;
+}
+
+interface ToolCallResponse {
+  type: "tool_call";
+  search_terms: Array<{ term: string; variants: string[] }>;
+  reason: string;
+  references_earlier: boolean;
+  reference_detail: string;
+  confidence: number;
+}
+
+type ExploratoryResponse = TranslationResponse | ToolCallResponse;
+
+interface ExecutionResponse {
+  original_language: string;
+  translated_text: string;
+  cultural_notes: string;
+  references_earlier: boolean;
+  reference_detail: string;
+  confidence: number;
+}
+
+interface ChatTurn {
+  userName: string;
+  timestamp: number;
+  content: string;
+}
+
+interface ExploratoryRequest {
+  language: string;
+  content: string;
+  history: ChatTurn[];
+}
+
+interface ExecutionRequest extends ExploratoryRequest {
+  additional_context: ChatTurn[];
+  speaker: string;
+  audience: string | null;
+}
+
 // Types for the translation system
 export interface TranslationContext {
   messageId: string;
   language: string;
   content: string;
-  history: Array<{
-    userName: string;
-    timestamp: number;
-    content: string;
-  }>;
-  additional_context: Array<{
-    userName: string;
-    timestamp: number;
-    content: string;
-  }>;
+  history: ChatTurn[];
+  additional_context: ChatTurn[];
+  speaker: string;
+  audience: string | null;
   result?: {
     original_language: string;
     translated_text: string;
     cultural_notes: string;
+    references_earlier: boolean;
+    reference_detail: string;
+    confidence: number;
   };
 }
 
@@ -40,18 +96,9 @@ export interface CachedTranslation {
   culturalNotes: string;
   originalLanguage: string;
   createdAt: number;
-}
-
-export interface TranslationResponse {
-  type: "translation" | "tool_call";
-  original_language?: string;
-  translated_text?: string;
-  cultural_notes?: string;
-  search_terms?: Array<{
-    term: string;
-    variants: string[];
-  }>;
-  reason?: string;
+  referencesEarlier?: boolean;
+  referenceDetail?: string;
+  confidence?: number;
 }
 
 class TranslationService {
@@ -70,21 +117,14 @@ class TranslationService {
   async translateMessageWithGraph(
     message: Message,
     language: string,
-    conversationHistory: Message[] = []
+    conversationHistory: Message[] = [],
+    onStatusUpdate?: (status: TranslationStatus) => void,
+    isGroupChat: boolean = false
   ): Promise<CachedTranslation> {
     const messageId = message.id;
 
-    // Check cache first
-    const cached = await this.getCachedTranslation(messageId, language);
-    if (cached) {
-      logger.info("translation", "Cache hit for translation", {
-        messageId,
-        language,
-      });
-      return cached;
-    }
-
-    logger.info("translation", "Cache miss, starting LangGraph flow", {
+    // CACHE DISABLED FOR TESTING - Always run LangGraph flow
+    logger.info("translation", "Cache disabled - starting LangGraph flow", {
       messageId,
       language,
     });
@@ -95,6 +135,10 @@ class TranslationService {
       message
     );
 
+    // Determine speaker and audience
+    const speaker = await this.getSpeakerName(message.senderId);
+    const audience = isGroupChat ? null : await this.getCurrentUserName();
+
     // Create context object
     const ctx: TranslationContext = {
       messageId: message.id,
@@ -102,14 +146,17 @@ class TranslationService {
       content: message.text,
       history: preparedHistory,
       additional_context: [],
+      speaker,
+      audience,
     };
 
     // Create MiniGraph with node functions
     const graph = new MiniGraph<TranslationContext>({
       entry: "translate",
       nodes: {
-        translate: this.translateNode.bind(this),
-        search: this.searchNode.bind(this),
+        translate: (ctx, input) =>
+          this.translateNode(ctx, input, onStatusUpdate),
+        search: (ctx, input) => this.searchNode(ctx, input, onStatusUpdate),
         done: this.doneNode.bind(this),
       },
       onTransition: (state, ctx) => {
@@ -126,7 +173,7 @@ class TranslationService {
       throw new Error("Translation failed - no result from graph execution");
     }
 
-    // Cache the result
+    // Create translation result (cache disabled)
     const translation: CachedTranslation = {
       messageId,
       language,
@@ -134,11 +181,15 @@ class TranslationService {
       culturalNotes: ctx.result.cultural_notes || "",
       originalLanguage: ctx.result.original_language,
       createdAt: Date.now(),
+      referencesEarlier: ctx.result.references_earlier,
+      referenceDetail: ctx.result.reference_detail,
+      confidence: ctx.result.confidence,
     };
 
-    await this.cacheTranslation(translation);
+    // CACHE DISABLED FOR TESTING - Skip cache storage
+    // await this.cacheTranslation(translation);
 
-    logger.info("translation", "Translation completed and cached", {
+    logger.info("translation", "Translation completed (cache disabled)", {
       messageId,
       language,
     });
@@ -150,7 +201,8 @@ class TranslationService {
    */
   private async translateNode(
     ctx: TranslationContext,
-    input?: any
+    input?: any,
+    onStatusUpdate?: (status: TranslationStatus) => void
   ): Promise<{ next?: string; output?: any }> {
     // Determine mode: exploratory on first pass, execution on second pass
     const mode =
@@ -160,19 +212,88 @@ class TranslationService {
       messageId: ctx.messageId,
     });
 
+    // Emit status update based on mode
+    if (mode === "exploratory") {
+      onStatusUpdate?.({
+        phase: "translating",
+        message: "Analyzing message...",
+        progress: { current: 1, total: 3 },
+      });
+    } else {
+      onStatusUpdate?.({
+        phase: "resubmitting",
+        message: "Translating with context...",
+        progress: { current: 3, total: 3 },
+      });
+    }
+
     const response = await this.callTranslationAPI(ctx, mode);
 
-    if (response.type === "tool_call") {
-      logger.info("translation", "Tool call requested, proceeding to search", {
-        searchTerms: response.search_terms?.length || 0,
-      });
-      return { next: "search", output: response };
+    if (mode === "exploratory") {
+      const exploratoryResponse = response as ExploratoryResponse;
+      if (exploratoryResponse.type === "tool_call") {
+        logger.info(
+          "translation",
+          "Tool call requested, proceeding to search",
+          {
+            searchTerms: exploratoryResponse.search_terms?.length || 0,
+            referencesEarlier: exploratoryResponse.references_earlier,
+            confidence: exploratoryResponse.confidence,
+            reason: exploratoryResponse.reason,
+          }
+        );
+
+        onStatusUpdate?.({
+          phase: "searching",
+          message: "Need more context",
+          searchTerms: exploratoryResponse.search_terms?.map((s) => s.term),
+          reason: exploratoryResponse.reason,
+          progress: { current: 2, total: 3 },
+        });
+
+        return { next: "search", output: exploratoryResponse };
+      } else {
+        logger.info("translation", "Direct translation completed", {
+          referencesEarlier: exploratoryResponse.references_earlier,
+          confidence: exploratoryResponse.confidence,
+        });
+
+        onStatusUpdate?.({
+          phase: "complete",
+          message: "Translation complete!",
+          progress: { current: 3, total: 3 },
+        });
+
+        ctx.result = {
+          original_language: exploratoryResponse.original_language,
+          translated_text: exploratoryResponse.translated_text,
+          cultural_notes: exploratoryResponse.cultural_notes,
+          references_earlier: exploratoryResponse.references_earlier,
+          reference_detail: exploratoryResponse.reference_detail,
+          confidence: exploratoryResponse.confidence,
+        };
+        return { next: "done" };
+      }
     } else {
-      logger.info("translation", "Direct translation completed");
+      const executionResponse = response as ExecutionResponse;
+      logger.info("translation", "Execution translation completed", {
+        referencesEarlier: executionResponse.references_earlier,
+        confidence: executionResponse.confidence,
+      });
+
+      onStatusUpdate?.({
+        phase: "complete",
+        message: "Translation complete!",
+        progress: { current: 3, total: 3 },
+      });
+
       ctx.result = {
-        original_language: response.original_language || "Unknown",
-        translated_text: response.translated_text || "",
-        cultural_notes: response.cultural_notes || "",
+        original_language: executionResponse.original_language,
+        translated_text: executionResponse.translated_text,
+        cultural_notes: executionResponse.cultural_notes,
+        references_earlier: executionResponse.references_earlier,
+        reference_detail: executionResponse.reference_detail,
+        confidence: executionResponse.confidence,
       };
       return { next: "done" };
     }
@@ -183,7 +304,8 @@ class TranslationService {
    */
   private async searchNode(
     ctx: TranslationContext,
-    toolCallResponse: TranslationResponse
+    toolCallResponse: ToolCallResponse,
+    onStatusUpdate?: (status: TranslationStatus) => void
   ): Promise<{ next?: string; output?: any }> {
     if (!toolCallResponse.search_terms) {
       logger.warning("translation", "No search terms in tool call response");
@@ -193,6 +315,13 @@ class TranslationService {
     logger.info("translation", "Performing FTS5 search", {
       messageId: ctx.messageId,
       searchTerms: toolCallResponse.search_terms.length,
+    });
+
+    onStatusUpdate?.({
+      phase: "searching",
+      message: "Searching conversation history...",
+      searchTerms: toolCallResponse.search_terms?.map((s) => s.term),
+      progress: { current: 2, total: 3 },
     });
 
     const additionalContext = await this.performFTS5Search(
@@ -222,7 +351,7 @@ class TranslationService {
   private async callTranslationAPI(
     ctx: TranslationContext,
     mode: "exploratory" | "execution"
-  ): Promise<TranslationResponse> {
+  ): Promise<ExploratoryResponse | ExecutionResponse> {
     if (!this.apiUrl) {
       throw new Error("Translation API not configured");
     }
@@ -235,22 +364,30 @@ class TranslationService {
 
     const idToken = await currentUser.getIdToken();
 
-    const requestBody = {
+    // Choose endpoint based on mode
+    const endpoint =
+      mode === "exploratory" ? "/translate/explore" : "/translate/execute";
+
+    const requestBody: ExploratoryRequest | ExecutionRequest = {
       language: ctx.language,
       content: ctx.content,
       history: ctx.history,
-      additional_context: ctx.additional_context,
-      mode,
+      ...(mode === "execution" && {
+        additional_context: ctx.additional_context,
+        speaker: ctx.speaker,
+        audience: ctx.audience,
+      }),
     };
 
     logger.info("translation", "Making API request", {
       messageId: ctx.messageId,
       mode,
+      endpoint,
       historyLength: ctx.history.length,
       contextLength: ctx.additional_context.length,
     });
 
-    const response = await fetch(`${this.apiUrl}/translate`, {
+    const response = await fetch(`${this.apiUrl}${endpoint}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -264,10 +401,30 @@ class TranslationService {
     }
 
     const result = await response.json();
-    logger.info("translation", "API response received", {
-      messageId: ctx.messageId,
-      type: result.type,
-    });
+
+    // Type-safe logging based on response type
+    if (mode === "exploratory") {
+      const exploratoryResult = result as ExploratoryResponse;
+      logger.info("translation", "API response received", {
+        messageId: ctx.messageId,
+        type: exploratoryResult.type,
+        referencesEarlier: exploratoryResult.references_earlier,
+        confidence: exploratoryResult.confidence,
+        referenceDetail:
+          exploratoryResult.reference_detail?.substring(0, 100) +
+          (exploratoryResult.reference_detail?.length > 100 ? "..." : ""),
+      });
+    } else {
+      const executionResult = result as ExecutionResponse;
+      logger.info("translation", "API response received", {
+        messageId: ctx.messageId,
+        referencesEarlier: executionResult.references_earlier,
+        confidence: executionResult.confidence,
+        referenceDetail:
+          executionResult.reference_detail?.substring(0, 100) +
+          (executionResult.reference_detail?.length > 100 ? "..." : ""),
+      });
+    }
 
     return result;
   }
@@ -278,12 +435,8 @@ class TranslationService {
   private async performFTS5Search(
     searchTerms: Array<{ term: string; variants: string[] }>,
     currentMessageId: string
-  ): Promise<Array<{ userName: string; timestamp: number; content: string }>> {
-    const results: Array<{
-      userName: string;
-      timestamp: number;
-      content: string;
-    }> = [];
+  ): Promise<ChatTurn[]> {
+    const results: ChatTurn[] = [];
 
     try {
       // Ensure SQLite is initialized before searching
@@ -352,13 +505,7 @@ class TranslationService {
   private async prepareHistory(
     conversationHistory: Message[],
     currentMessage: Message
-  ): Promise<
-    Array<{
-      userName: string;
-      timestamp: number;
-      content: string;
-    }>
-  > {
+  ): Promise<ChatTurn[]> {
     // Get recent messages (last 5) before current message
     const recentMessages = conversationHistory
       .filter(
@@ -419,6 +566,38 @@ class TranslationService {
     } catch (error) {
       logger.warning("translation", "Failed to get cached translation", error);
       return null;
+    }
+  }
+
+  /**
+   * Get speaker name from user ID
+   */
+  private async getSpeakerName(senderId: string): Promise<string> {
+    try {
+      const user = await sqliteService.getUserProfile(senderId);
+      return user?.displayName || "Unknown";
+    } catch (error) {
+      logger.warning("translation", "Failed to get speaker name", error);
+      return "Unknown";
+    }
+  }
+
+  /**
+   * Get current user's display name
+   */
+  private async getCurrentUserName(): Promise<string> {
+    try {
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        return "You";
+      }
+
+      const user = await sqliteService.getUserProfile(currentUser.uid);
+      return user?.displayName || "You";
+    } catch (error) {
+      logger.warning("translation", "Failed to get current user name", error);
+      return "You";
     }
   }
 }

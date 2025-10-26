@@ -194,9 +194,15 @@ export class SchemaManager {
           END;
         `);
 
+        // Populate FTS5 table with existing messages
+        await db.execAsync(`
+          INSERT INTO messages_fts(rowid, text, senderId, conversationId)
+          SELECT rowid, text, senderId, conversationId FROM messages;
+        `);
+
         console.log(
           "sqlite",
-          "FTS5 virtual table and triggers created successfully"
+          "FTS5 virtual table and triggers created successfully, populated with existing messages"
         );
       } catch (fts5Error) {
         console.warn(

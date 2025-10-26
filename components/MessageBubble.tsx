@@ -64,6 +64,7 @@ export function MessageBubble({
   message,
   sender,
   showDisplayName = true,
+  isGroupChat = false,
   onLongPress,
   onRetry,
   conversationHistory = [],
@@ -80,8 +81,21 @@ export function MessageBubble({
     detectedLanguage: string;
     translatedText: string;
     culturalNotes?: string;
+    referencesEarlier?: boolean;
+    referenceDetail?: string;
+    confidence?: number;
   } | null>(null);
   const [translating, setTranslating] = useState(false);
+  const [translationStatus, setTranslationStatus] = useState<{
+    phase: "idle" | "translating" | "searching" | "resubmitting" | "complete";
+    message: string;
+    searchTerms?: string[];
+    reason?: string;
+    progress?: { current: number; total: number };
+  }>({
+    phase: "idle",
+    message: "",
+  });
 
   useEffect(() => {
     if (!senderProfile && !isOwnMessage) {
@@ -181,13 +195,20 @@ export function MessageBubble({
       const translation = await translationService.translateMessageWithGraph(
         message,
         targetLanguage,
-        conversationHistory
+        conversationHistory,
+        (status) => {
+          setTranslationStatus(status);
+        },
+        isGroupChat
       );
 
       setTranslationData({
         detectedLanguage: translation.originalLanguage,
         translatedText: translation.translatedText,
         culturalNotes: translation.culturalNotes,
+        referencesEarlier: translation.referencesEarlier,
+        referenceDetail: translation.referenceDetail,
+        confidence: translation.confidence,
       });
     } catch (error: any) {
       console.error("Translation error:", error);
@@ -302,7 +323,71 @@ export function MessageBubble({
 
             <ScrollView style={styles.modalBody}>
               {translating ? (
-                <Text style={styles.loadingText}>Translating...</Text>
+                <View style={styles.translationStatusContainer}>
+                  {/* Progress indicator */}
+                  {translationStatus.progress && (
+                    <View style={styles.progressContainer}>
+                      <Text style={styles.progressText}>
+                        Step {translationStatus.progress.current} of{" "}
+                        {translationStatus.progress.total}
+                      </Text>
+                      <View style={styles.progressBar}>
+                        <View
+                          style={[
+                            styles.progressFill,
+                            {
+                              width: `${
+                                (translationStatus.progress.current /
+                                  translationStatus.progress.total) *
+                                100
+                              }%`,
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Phase indicator */}
+                  <Text style={styles.statusPhase}>
+                    {translationStatus.phase === "translating" &&
+                      "🔄 Translating..."}
+                    {translationStatus.phase === "searching" &&
+                      "🔍 Searching for context..."}
+                    {translationStatus.phase === "resubmitting" &&
+                      "🔄 Translating with context..."}
+                    {translationStatus.phase === "complete" && "✅ Complete!"}
+                  </Text>
+
+                  {/* Status message */}
+                  <Text style={styles.statusMessage}>
+                    {translationStatus.message}
+                  </Text>
+
+                  {/* Search terms (when searching) */}
+                  {translationStatus.searchTerms &&
+                    translationStatus.searchTerms.length > 0 && (
+                      <View style={styles.searchTermsContainer}>
+                        <Text style={styles.searchTermsLabel}>
+                          Looking for context about:
+                        </Text>
+                        <View style={styles.searchTermsList}>
+                          {translationStatus.searchTerms.map((term, index) => (
+                            <Text key={index} style={styles.searchTerm}>
+                              {term}
+                            </Text>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+
+                  {/* Reason for needing context */}
+                  {translationStatus.reason && (
+                    <Text style={styles.reasonText}>
+                      {translationStatus.reason}
+                    </Text>
+                  )}
+                </View>
               ) : translationData ? (
                 <View>
                   <View style={styles.translationSection}>
@@ -310,6 +395,11 @@ export function MessageBubble({
                     <Text style={styles.sectionValue}>
                       {translationData.detectedLanguage}
                     </Text>
+                  </View>
+
+                  <View style={styles.translationSection}>
+                    <Text style={styles.sectionLabel}>Original Text:</Text>
+                    <Text style={styles.originalText}>{message.text}</Text>
                   </View>
 
                   <View style={styles.translationSection}>
@@ -327,6 +417,37 @@ export function MessageBubble({
                       </Text>
                     </View>
                   )}
+
+                  {translationData.confidence !== undefined && (
+                    <View style={styles.translationSection}>
+                      <Text style={styles.sectionLabel}>Confidence:</Text>
+                      <View style={styles.confidenceContainer}>
+                        <Text style={styles.confidenceText}>
+                          {translationData.confidence}%
+                        </Text>
+                        <View style={styles.confidenceBar}>
+                          <View
+                            style={[
+                              styles.confidenceFill,
+                              { width: `${translationData.confidence}%` },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  )}
+
+                  {translationData.referencesEarlier &&
+                    translationData.referenceDetail && (
+                      <View style={styles.translationSection}>
+                        <Text style={styles.sectionLabel}>
+                          References Earlier Messages:
+                        </Text>
+                        <Text style={styles.referenceDetail}>
+                          {translationData.referenceDetail}
+                        </Text>
+                      </View>
+                    )}
                 </View>
               ) : null}
             </ScrollView>
@@ -540,5 +661,126 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderLeftWidth: 3,
     borderLeftColor: "#ffc107",
+  },
+  confidenceContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  confidenceText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#212529",
+    minWidth: 50,
+  },
+  confidenceBar: {
+    flex: 1,
+    height: 8,
+    backgroundColor: "#e9ecef",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  confidenceFill: {
+    height: "100%",
+    backgroundColor: "#28a745",
+    borderRadius: 4,
+  },
+  referenceDetail: {
+    fontSize: 14,
+    color: "#495057",
+    lineHeight: 20,
+    backgroundColor: "#e7f3ff",
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: "#007AFF",
+  },
+  originalText: {
+    fontSize: 16,
+    color: "#212529",
+    lineHeight: 22,
+    backgroundColor: "#f8f9fa",
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: "#6c757d",
+  },
+  // Status update styles
+  translationStatusContainer: {
+    padding: 20,
+    alignItems: "center",
+  },
+  progressContainer: {
+    width: "100%",
+    marginBottom: 16,
+  },
+  progressText: {
+    fontSize: 12,
+    color: "#6c757d",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  progressBar: {
+    width: "100%",
+    height: 6,
+    backgroundColor: "#e9ecef",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#007AFF",
+    borderRadius: 3,
+  },
+  statusPhase: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#007AFF",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  statusMessage: {
+    fontSize: 16,
+    color: "#495057",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  searchTermsContainer: {
+    width: "100%",
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  searchTermsLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#6c757d",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  searchTermsList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+  },
+  searchTerm: {
+    fontSize: 14,
+    color: "#007AFF",
+    backgroundColor: "#e7f3ff",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#007AFF",
+  },
+  reasonText: {
+    fontSize: 14,
+    color: "#6c757d",
+    fontStyle: "italic",
+    textAlign: "center",
+    lineHeight: 20,
+    marginTop: 8,
+    paddingHorizontal: 16,
   },
 });
