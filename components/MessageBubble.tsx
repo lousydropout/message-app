@@ -18,11 +18,11 @@
  * @see messageService for the logic related to message status and retries.
  */
 
+import translationService from "@/services/translationService";
 import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { Message } from "@/types/Message";
 import { SUPPORTED_LANGUAGES, User } from "@/types/User";
-import { getAuth } from "firebase/auth";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -52,6 +52,8 @@ interface MessageBubbleProps {
   onLongPress?: (message: Message) => void;
   /** Callback for retry action (failed messages) */
   onRetry?: (message: Message) => void;
+  /** Conversation history for translation context */
+  conversationHistory?: Message[];
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -64,6 +66,7 @@ export function MessageBubble({
   showDisplayName = true,
   onLongPress,
   onRetry,
+  conversationHistory = [],
 }: MessageBubbleProps) {
   const { user, userProfile } = useAuthStore();
   const [senderProfile, setSenderProfile] = useState<User | null>(
@@ -168,46 +171,26 @@ export function MessageBubble({
     setTranslationModalVisible(true);
 
     try {
-      // Get Firebase ID token
-      const auth = getAuth();
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        throw new Error("User not signed in");
-      }
-
-      const idToken = await currentUser.getIdToken();
-
       // Get target language (first preferred language)
       const targetLanguageCode = userProfile.languagePreferences[0];
       const targetLanguage =
         SUPPORTED_LANGUAGES.find((lang) => lang.code === targetLanguageCode)
           ?.name || "English";
 
-      // Make translation request
-      const response = await fetch(`${apiUrl}/translate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          language: targetLanguage,
-          content: message.text,
-        }),
+      // Use enhanced translation service with LangGraph
+      const translation = await translationService.translateMessageWithGraph(
+        message,
+        targetLanguage,
+        conversationHistory
+      );
+
+      setTranslationData({
+        detectedLanguage: translation.originalLanguage,
+        translatedText: translation.translatedText,
+        culturalNotes: translation.culturalNotes,
       });
-
-      const responseData = await response.json();
-
-      if (response.ok && responseData.translated_text) {
-        setTranslationData({
-          detectedLanguage: responseData.original_language || "Unknown",
-          translatedText: responseData.translated_text,
-          culturalNotes: responseData.cultural_notes,
-        });
-      } else {
-        throw new Error(responseData.error || "Translation failed");
-      }
     } catch (error: any) {
+      console.error("Translation error:", error);
       Alert.alert(
         "Translation Error",
         error.message || "Failed to translate message"

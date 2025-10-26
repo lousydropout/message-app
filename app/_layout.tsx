@@ -124,6 +124,7 @@ export default function RootLayout() {
 
       // Sync friends from accepted requests on startup
       syncFriendsFromAcceptedRequests(user.uid).catch(console.error);
+      console.log("line after syncFriendsFromAcceptedRequests on startup");
 
       const unsubscribeFriendRequests = subscribeToFriendRequests(user.uid);
       const unsubscribeSentRequests = subscribeToSentRequests(user.uid);

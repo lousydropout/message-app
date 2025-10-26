@@ -384,6 +384,7 @@ export function ConversationView({
           showDisplayName={showDisplayName}
           onLongPress={handleMessageLongPress}
           onRetry={handleRetryMessage}
+          conversationHistory={conversationMessages}
         />
       </>
     );

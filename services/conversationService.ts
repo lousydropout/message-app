@@ -342,6 +342,11 @@ class ConversationService {
       where("participants", "array-contains", userId)
     );
 
+    logger.debug(
+      "conversations",
+      `[DEBUG] Setting up conversation subscription for user: ${userId}`
+    );
+
     return onSnapshot(
       q,
       (querySnapshot) => {

@@ -169,24 +169,33 @@ app.get("/auth/check", async (c) => {
 });
 
 /**
- * Translation endpoint
+ * Enhanced translation endpoint with Prompt A and B modes
  * POST /translate
- * Body: { language: string, content: string }
+ * Body: { language: string, content: string, history: array, additional_context: array, mode: string }
  * Requires authentication
  */
 app.post("/translate", authMiddleware, async (c) => {
   const requestId = Math.random().toString(36).substring(7);
-  console.log(`[${requestId}] Translation request started`);
+  console.log(`[${requestId}] Enhanced translation request started`);
 
   try {
     const body = await c.req.json();
-    const { language, content } = body;
+    const {
+      language,
+      content,
+      history = [],
+      additional_context = [],
+      mode = "exploratory",
+    } = body;
 
     console.log(`[${requestId}] Request body received:`, {
       language,
       contentLength: content?.length || 0,
       contentPreview:
         content?.substring(0, 100) + (content?.length > 100 ? "..." : ""),
+      historyLength: history?.length || 0,
+      contextLength: additional_context?.length || 0,
+      mode,
     });
 
     // Validate request body
@@ -229,30 +238,115 @@ app.post("/translate", authMiddleware, async (c) => {
       `[${requestId}] Validation passed, proceeding with translation`
     );
 
-    // Create translation prompt
-    const prompt = `You are a professional translator. Please translate the following text to ${language}. 
+    // Create appropriate prompt based on mode
+    let prompt: string;
 
-First, detect the original language of the text and provide it in your response.
-Then, provide the translation. 
+    if (mode === "exploratory") {
+      // Prompt A - Exploratory (allows tool_call)
+      const historyText = history
+        .map((h: any) => `[${h.userName}]: ${h.content}`)
+        .join("\n");
 
-Notes:
-1. Add short cultural notes in curly braces inside the translation. Add longer in the "cultural_notes" field.
-2. Maintain the original meaning and tone of the text.
+      prompt = `You are a professional translator assisting in chat translation.
 
-Please respond with a JSON object in this exact format:
+Goal:
+Translate the most recent message while maintaining tone, nuance, and cultural context.
+If the meaning is ambiguous, you may request extra context from the client.
+
+Instructions:
+1. Examine the short chat history.
+2. If you can confidently translate, do so immediately.
+3. If you think more context (slang, references, inside jokes) would improve accuracy,
+   respond with a "tool_call" telling the client what to search for.
+
+When requesting a tool_call:
+- Each search term must include common variant spellings, scripts, or transliterations.
+  For example, for "kusa" include ["草", "くさ", "クサ", "www", "ｗｗｗ"].
+- Limit each variants list to 3–5 likely forms.
+- Do not invent random unrelated terms.
+
+Respond with **valid JSON** in one of the following forms:
+
+If translation is ready:
+\`\`\`json
+{
+  "type": "translation",
+  "original_language": "detected language name",
+  "translated_text": "translated text here",
+  "cultural_notes": "cultural notes here"
+}
+\`\`\`
+
+If more context is needed:
+\`\`\`json
+{
+  "type": "tool_call",
+  "search_terms": [
+    {
+      "term": "base term",
+      "variants": ["variant1", "variant2", ...]
+    },
+    ...
+  ],
+  "reason": "why additional context would help"
+}
+\`\`\`
+
+History:
+\`\`\`
+${historyText}
+\`\`\`
+
+Message to translate:
+\`\`\`
+${content}
+\`\`\``;
+    } else {
+      // Prompt B - Execution (final translation)
+      const historyText = history
+        .map((h: any) => `[${h.userName}]: ${h.content}`)
+        .join("\n");
+      const retrievedText = additional_context
+        .map((a: any) => `[${a.userName}]: ${a.content}`)
+        .join("\n");
+
+      prompt = `You are a professional translator. Additional contextual messages have now been provided.
+
+Your job: translate the final message using both "history" and "additional_context" to capture tone,
+slang, and cultural nuance.
+
+Rules:
+- Do NOT request more information.
+- Produce only the final translation JSON.
+
+Respond strictly as:
+\`\`\`json
 {
   "original_language": "detected language name",
   "translated_text": "translated text here",
   "cultural_notes": "cultural notes here"
 }
+\`\`\`
 
-Text to translate: 
+History:
+\`\`\`
+${historyText}
+\`\`\`
+
+Additional context:
+\`\`\`
+${retrievedText}
+\`\`\`
+
+Message to translate:
 \`\`\`
 ${content}
-\`\`\`
-`;
+\`\`\``;
+    }
 
-    console.log(`[${requestId}] Calling OpenAI API with model: gpt-4o-mini`);
+    console.log(
+      `[${requestId}] Calling OpenAI API with model: gpt-4o-mini, mode: ${mode}`
+    );
     const startTime = Date.now();
 
     // Call OpenAI API
@@ -294,9 +388,11 @@ ${content}
     try {
       translationResult = JSON.parse(responseText);
       console.log(`[${requestId}] Successfully parsed OpenAI response:`, {
+        type: translationResult.type,
         originalLanguage: translationResult.original_language,
         translatedTextLength: translationResult.translated_text?.length || 0,
         hasCulturalNotes: !!translationResult.cultural_notes,
+        searchTermsCount: translationResult.search_terms?.length || 0,
       });
     } catch (parseError) {
       console.error(`[${requestId}] Failed to parse OpenAI response:`, {
@@ -306,37 +402,49 @@ ${content}
       throw new Error("Invalid response format from translation service");
     }
 
-    // Validate OpenAI response structure
-    if (
-      !translationResult.original_language ||
-      !translationResult.translated_text
-    ) {
-      console.log(`[${requestId}] Invalid response structure:`, {
-        hasOriginalLanguage: !!translationResult.original_language,
-        hasTranslatedText: !!translationResult.translated_text,
-        responseKeys: Object.keys(translationResult),
-      });
-      throw new Error("Invalid response structure from translation service");
+    // For exploratory mode, validate tool_call or translation response
+    if (mode === "exploratory") {
+      if (translationResult.type === "tool_call") {
+        if (
+          !translationResult.search_terms ||
+          !Array.isArray(translationResult.search_terms)
+        ) {
+          throw new Error("Invalid tool_call response structure");
+        }
+      } else if (translationResult.type === "translation") {
+        if (
+          !translationResult.original_language ||
+          !translationResult.translated_text
+        ) {
+          throw new Error("Invalid translation response structure");
+        }
+      } else {
+        throw new Error("Invalid response type from exploratory mode");
+      }
+    } else {
+      // For execution mode, validate translation response
+      if (
+        !translationResult.original_language ||
+        !translationResult.translated_text
+      ) {
+        console.log(`[${requestId}] Invalid response structure:`, {
+          hasOriginalLanguage: !!translationResult.original_language,
+          hasTranslatedText: !!translationResult.translated_text,
+          responseKeys: Object.keys(translationResult),
+        });
+        throw new Error("Invalid response structure from translation service");
+      }
     }
 
-    // Return the complete translation results
-    const finalResult = {
-      original_text: content,
-      original_language: translationResult.original_language,
-      target_language: language,
-      translated_text: translationResult.translated_text,
-      cultural_notes: translationResult.cultural_notes || null,
-    };
-
     console.log(`[${requestId}] Translation completed successfully:`, {
-      originalLanguage: finalResult.original_language,
-      targetLanguage: finalResult.target_language,
-      originalTextLength: finalResult.original_text.length,
-      translatedTextLength: finalResult.translated_text.length,
-      hasCulturalNotes: !!finalResult.cultural_notes,
+      mode,
+      type: translationResult.type,
+      originalLanguage: translationResult.original_language,
+      translatedTextLength: translationResult.translated_text?.length || 0,
+      hasCulturalNotes: !!translationResult.cultural_notes,
     });
 
-    return c.json(finalResult);
+    return c.json(translationResult);
   } catch (error) {
     console.error(`[${requestId}] Translation error:`, {
       error: error instanceof Error ? error.message : error,

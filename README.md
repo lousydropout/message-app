@@ -111,7 +111,7 @@ A React Native messaging smart phone application with AI-powered features for in
 
    ```bash
    # Firebase Configuration
-   FIREBASE_PROJECT_ID=
+   EXPO_PUBLIC_FIREBASE_PROJECT_ID=
    EXPO_PUBLIC_FIREBASE_API_KEY=your-api-key-here
    EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
    EXPO_PUBLIC_FIREBASE_PROJECT_ID=your-project-id

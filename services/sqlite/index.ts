@@ -16,6 +16,19 @@
  * @see /services/sqlite/repositories/ for the individual repository implementations.
  */
 
+import { SQLiteDatabase } from "@/services/sqlite/core/SQLiteDatabase";
+import { QueuedMessage, SearchResult } from "@/services/sqlite/core/types";
+import { ConversationRepository } from "@/services/sqlite/repositories/ConversationRepository";
+import { LogRepository } from "@/services/sqlite/repositories/LogRepository";
+import { MessageQueueRepository } from "@/services/sqlite/repositories/MessageQueueRepository";
+import { MessageRepository } from "@/services/sqlite/repositories/MessageRepository";
+import { SyncMetadataRepository } from "@/services/sqlite/repositories/SyncMetadataRepository";
+import { UserRepository } from "@/services/sqlite/repositories/UserRepository";
+import { Conversation } from "@/types/Conversation";
+import { Log, LogLevel } from "@/types/Log";
+import { Message } from "@/types/Message";
+import { User } from "@/types/User";
+
 /**
  * @fileoverview SQLite Service - Main facade providing backward-compatible API
  *
@@ -392,6 +405,57 @@ export class SQLiteService {
    */
   async getUserProfiles(userIds: string[]): Promise<User[]> {
     return this.userRepo.getUserProfiles(userIds);
+  }
+
+  /**
+   * Cache a translation result
+   */
+  async cacheTranslation(translation: {
+    messageId: string;
+    language: string;
+    translatedText: string;
+    culturalNotes: string;
+    originalLanguage: string;
+    createdAt: number;
+  }): Promise<void> {
+    await this.database.getDb().runAsync(
+      `INSERT OR REPLACE INTO translations 
+       (messageId, language, translatedText, culturalNotes, originalLanguage, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        translation.messageId,
+        translation.language,
+        translation.translatedText,
+        translation.culturalNotes,
+        translation.originalLanguage,
+        translation.createdAt,
+      ]
+    );
+  }
+
+  /**
+   * Get a cached translation
+   */
+  async getCachedTranslation(
+    messageId: string,
+    language: string
+  ): Promise<{
+    messageId: string;
+    language: string;
+    translatedText: string;
+    culturalNotes: string;
+    originalLanguage: string;
+    createdAt: number;
+  } | null> {
+    const result = await this.database.getDb().getFirstAsync<{
+      messageId: string;
+      language: string;
+      translatedText: string;
+      culturalNotes: string;
+      originalLanguage: string;
+      createdAt: number;
+    }>("SELECT * FROM translations WHERE messageId = ? AND language = ?", [messageId, language]);
+    return result || null;
   }
 }
 

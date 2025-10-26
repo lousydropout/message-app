@@ -69,6 +69,7 @@ export class SchemaManager {
       await this.createQueuedMessagesTable(db);
       await this.createLogsTable(db);
       await this.createSyncMetadataTable(db);
+      await this.createTranslationsTable(db);
 
       console.log("sqlite", "All tables created successfully");
     } catch (error) {
@@ -544,6 +545,38 @@ export class SchemaManager {
         value TEXT NOT NULL,
         updatedAt INTEGER NOT NULL
       );
+    `);
+  }
+
+  /**
+   * Creates the `translations` table for caching translation results.
+   *
+   * @param db The SQLite database instance.
+   * @private
+   */
+  private async createTranslationsTable(
+    db: SQLite.SQLiteDatabase
+  ): Promise<void> {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS translations (
+        messageId TEXT,
+        language TEXT,
+        translatedText TEXT NOT NULL,
+        culturalNotes TEXT,
+        originalLanguage TEXT NOT NULL,
+        createdAt INTEGER NOT NULL,
+        PRIMARY KEY (messageId, language)
+      );
+    `);
+
+    // Create indexes for performance
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_translations_messageId 
+        ON translations(messageId);
+    `);
+    await db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_translations_createdAt 
+        ON translations(createdAt DESC);
     `);
   }
 }

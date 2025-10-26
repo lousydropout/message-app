@@ -21,12 +21,14 @@
  * @see useConnectionStore for the network and sync state.
  */
 
+import translationService from "@/services/translationService";
 import {
   connectionHelpers,
   useConnectionStore,
 } from "@/stores/connectionStore";
 import { logger, useLoggerStore } from "@/stores/loggerStore";
 import { LogLevel } from "@/types/Log";
+import { Message } from "@/types/Message";
 import * as Clipboard from "expo-clipboard";
 import { getAuth } from "firebase/auth";
 import React, { useEffect, useRef, useState } from "react";
@@ -57,6 +59,14 @@ export default function DiagnosticsScreen() {
   const [translateModalVisible, setTranslateModalVisible] = useState(false);
   const [translateResponse, setTranslateResponse] = useState<string>("");
   const [translateLoading, setTranslateLoading] = useState(false);
+
+  // Enhanced Translation Test Modal state
+  const [enhancedTranslateModalVisible, setEnhancedTranslateModalVisible] =
+    useState(false);
+  const [enhancedTranslateResponse, setEnhancedTranslateResponse] =
+    useState<string>("");
+  const [enhancedTranslateLoading, setEnhancedTranslateLoading] =
+    useState(false);
 
   // Logs state
   const [selectedLogLevel, setSelectedLogLevel] = useState<
@@ -379,6 +389,104 @@ export default function DiagnosticsScreen() {
     }
   }, [logger]);
 
+  // Enhanced Translation Test Function
+  const testEnhancedTranslationRequest = React.useCallback(async () => {
+    setEnhancedTranslateLoading(true);
+    setEnhancedTranslateModalVisible(true);
+    setEnhancedTranslateResponse("Loading...");
+
+    try {
+      // Create a mock message for testing
+      const mockMessage: Message = {
+        id: "test-message-123",
+        conversationId: "test-conversation",
+        senderId: "test-sender",
+        text: "いや、マジで草www", // Japanese slang that should trigger tool_call
+        timestamp: { toMillis: () => Date.now() } as any,
+        status: "sent",
+        readBy: {},
+        createdAt: { toMillis: () => Date.now() } as any,
+        updatedAt: { toMillis: () => Date.now() } as any,
+      };
+
+      // Create mock conversation history
+      const mockHistory: Message[] = [
+        {
+          id: "history-1",
+          conversationId: "test-conversation",
+          senderId: "test-sender",
+          text: "teach me more slang",
+          timestamp: { toMillis: () => Date.now() - 10000 } as any,
+          status: "sent",
+          readBy: {},
+          createdAt: { toMillis: () => Date.now() - 10000 } as any,
+          updatedAt: { toMillis: () => Date.now() - 10000 } as any,
+        },
+        {
+          id: "history-2",
+          conversationId: "test-conversation",
+          senderId: "test-sender",
+          text: "最近Rikaの英語すごい上手",
+          timestamp: { toMillis: () => Date.now() - 5000 } as any,
+          status: "sent",
+          readBy: {},
+          createdAt: { toMillis: () => Date.now() - 5000 } as any,
+          updatedAt: { toMillis: () => Date.now() - 5000 } as any,
+        },
+      ];
+
+      logger.info(
+        "enhanced-translation",
+        "🧪 Starting enhanced translation test",
+        {
+          messageText: mockMessage.text,
+          historyLength: mockHistory.length,
+        }
+      );
+
+      // Test the enhanced translation service
+      const translation = await translationService.translateMessageWithGraph(
+        mockMessage,
+        "English",
+        mockHistory
+      );
+
+      logger.info("enhanced-translation", "✅ Enhanced translation completed", {
+        originalLanguage: translation.originalLanguage,
+        translatedText: translation.translatedText,
+        hasCulturalNotes: !!translation.culturalNotes,
+      });
+
+      let responseDisplay = `Enhanced Translation Test Results:\n\n`;
+      responseDisplay += `Original Language: ${translation.originalLanguage}\n`;
+      responseDisplay += `Translated Text: ${translation.translatedText}\n`;
+      if (translation.culturalNotes) {
+        responseDisplay += `Cultural Notes: ${translation.culturalNotes}\n`;
+      }
+      responseDisplay += `\nMessage ID: ${translation.messageId}\n`;
+      responseDisplay += `Language: ${translation.language}\n`;
+      responseDisplay += `Cached At: ${new Date(
+        translation.createdAt
+      ).toISOString()}\n\n`;
+      responseDisplay += `✅ Enhanced translation with LangGraph orchestration successful!`;
+
+      setEnhancedTranslateResponse(responseDisplay);
+    } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      logger.error(
+        "enhanced-translation",
+        "❌ Enhanced translation test failed:",
+        {
+          error: errorMessage,
+        }
+      );
+      setEnhancedTranslateResponse(`Error: ${errorMessage}`);
+    } finally {
+      setEnhancedTranslateLoading(false);
+    }
+  }, [logger]);
+
   return (
     <ScrollView style={styles.container}>
       {/* System Logs Section */}
@@ -520,6 +628,12 @@ export default function DiagnosticsScreen() {
           onPress={testTranslationRequest}
           color="green"
         />
+
+        <Button
+          title="🚀 Test Enhanced Translation (LangGraph)"
+          onPress={testEnhancedTranslationRequest}
+          color="purple"
+        />
       </View>
 
       {/* API Response Modal */}
@@ -572,6 +686,38 @@ export default function DiagnosticsScreen() {
             <ScrollView style={styles.modalBody}>
               <Text style={styles.apiResponseText}>
                 {translateLoading ? "Loading..." : translateResponse}
+              </Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Enhanced Translation Response Modal */}
+      <Modal
+        visible={enhancedTranslateModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setEnhancedTranslateModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                Enhanced Translation (LangGraph) Response
+              </Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setEnhancedTranslateModalVisible(false)}
+              >
+                <Text style={styles.modalCloseButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <Text style={styles.apiResponseText}>
+                {enhancedTranslateLoading
+                  ? "Loading..."
+                  : enhancedTranslateResponse}
               </Text>
             </ScrollView>
           </View>
