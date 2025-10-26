@@ -3,18 +3,22 @@ import * as SQLite from "expo-sqlite";
 import { AppState } from "react-native";
 
 /**
- * @fileoverview Core SQLite Database class - handles connection, write queue, and retry logic
+ * @fileoverview Core SQLite Database Class - The foundation of the local database layer.
  *
- * This class provides the foundation for all SQLite operations with:
- * - Promise-based write queue to prevent "database is locked" errors
- * - Exponential backoff retry strategy for SQLITE_BUSY errors
- * - AppState handling for graceful shutdown
- * - WAL journal mode for better concurrent performance
+ * This class is the central hub for all SQLite operations. It encapsulates the
+ * low-level details of managing the database connection, ensuring data integrity,
+ * and handling the concurrency challenges inherent in a mobile environment. Its
+ * key features are a promise-based write queue to serialize all write operations
+ * and a robust retry mechanism with exponential backoff to handle transient
+ * "database is locked" errors.
  *
- * The write queue ensures that all database write operations are serialized,
- * preventing the common "database is locked" error that occurs when multiple
- * operations try to write simultaneously. The retry logic handles transient
- * failures with exponential backoff.
+ * This class is not intended to be used directly by the application's feature
+ * logic. Instead, it serves as the underlying engine for the `SQLiteService`
+ * facade and the various repository classes, providing them with a stable and
+ * reliable interface to the database.
+ *
+ * @see SQLiteService for the public-facing API that uses this class.
+ * @see SchemaManager for how the database schema is created and managed.
  */
 export class SQLiteDatabase {
   /** The SQLite database instance */
@@ -80,7 +84,13 @@ export class SQLiteDatabase {
   }
 
   /**
-   * Get the database instance (for repositories to use)
+   * Returns the raw `expo-sqlite` database instance.
+   *
+   * This method is intended for use by the repository classes, which need
+   * direct access to the database to execute queries.
+   *
+   * @returns The active `SQLite.SQLiteDatabase` instance.
+   * @throws An error if the database has not been initialized.
    */
   getDb(): SQLite.SQLiteDatabase {
     if (!this.db) {
@@ -97,7 +107,14 @@ export class SQLiteDatabase {
   }
 
   /**
-   * Setup AppState handling for graceful shutdown
+   * Sets up a listener for application state changes to ensure data integrity.
+   *
+   * When the app moves to the background, this listener waits for any pending
+   * write operations in the queue to complete before allowing the app to be
+   * suspended. This prevents data corruption that could occur if a write
+   * operation is interrupted mid-transaction.
+   *
+   * @private
    */
   private setupAppStateHandling(): void {
     this.appStateSubscription = AppState.addEventListener(
@@ -129,7 +146,11 @@ export class SQLiteDatabase {
   }
 
   /**
-   * Cleanup AppState subscription
+   * Removes the AppState change listener.
+   *
+   * This is called during the cleanup process to prevent memory leaks.
+   *
+   * @private
    */
   private cleanupAppStateHandling(): void {
     if (this.appStateSubscription) {
@@ -139,8 +160,15 @@ export class SQLiteDatabase {
   }
 
   /**
-   * Promise-based write queue to ensure sequential write operations
-   * This prevents "database is locked" errors by serializing all writes
+   * Enqueues a write operation to be executed sequentially.
+   *
+   * This method implements a promise-based mutex (mutual exclusion) to ensure
+   * that only one write operation can be executed at a time. This is the primary
+   * mechanism for preventing "database is locked" errors.
+   *
+   * @param task An async function that performs the write operation.
+   * @returns A promise that resolves with the result of the task.
+   * @template T The return type of the task.
    */
   async enqueueWrite<T>(task: () => Promise<T>): Promise<T> {
     // Chain tasks to ensure sequential execution
@@ -157,8 +185,19 @@ export class SQLiteDatabase {
   }
 
   /**
-   * Retry logic for database operations that might encounter "database is locked" errors
-   * Handles both "database is locked" and "SQLITE_BUSY" errors with exponential backoff
+   * Executes a database operation with a retry mechanism for lock errors.
+   *
+   * This method wraps a given operation in a retry loop that will re-attempt
+   * the operation if it fails with a "database is locked" or "SQLITE_BUSY"
+   * error. It uses an exponential backoff strategy, increasing the delay
+   * between retries to give the database time to become available.
+   *
+   * @param operation The async database operation to execute.
+   * @param retries The maximum number of times to retry the operation.
+   * @param baseDelayMs The initial delay between retries, in milliseconds.
+   * @returns A promise that resolves with the result of the operation.
+   * @template T The return type of the operation.
+   * @throws An error if the operation fails after all retries.
    */
   async runWithRetries<T>(
     operation: () => Promise<T>,
@@ -196,8 +235,15 @@ export class SQLiteDatabase {
   }
 
   /**
-   * Optimized single-row write operation (skips exclusive transaction overhead)
-   * Use this for simple INSERT/UPDATE/DELETE operations that don't need transaction guarantees
+   * An optimized method for executing a single, non-transactional write operation.
+   *
+   * This method combines the write queue and retry logic for simple write
+   * operations (e.g., a single `INSERT` or `UPDATE`). It is more efficient than
+   * wrapping a single operation in a full transaction.
+   *
+   * @param operation The async write operation to execute.
+   * @returns A promise that resolves with the result of the operation.
+   * @template T The return type of the operation.
    */
   async runSingleWrite<T>(operation: () => Promise<T>): Promise<T> {
     return this.runWithRetries(async () => {
@@ -208,10 +254,10 @@ export class SQLiteDatabase {
   }
 
   /**
-   * Gets database statistics including record counts for all tables
+   * Retrieves statistics about the database, such as the number of records in each table.
    *
-   * @returns Object containing counts for messages, conversations, and queued messages
-   * @throws Error if database is not initialized
+   * @returns A promise that resolves to an object containing the table counts.
+   * @throws An error if the database is not initialized.
    */
   async getStats(): Promise<{
     messages: number;
@@ -243,10 +289,12 @@ export class SQLiteDatabase {
   }
 
   /**
-   * Gets all custom database indexes (excluding SQLite system indexes)
+   * Retrieves a list of all custom indexes in the database.
    *
-   * @returns Array of index names
-   * @throws Error if database is not initialized
+   * This is useful for debugging and verifying that the schema is set up correctly.
+   *
+   * @returns A promise that resolves to an array of index names.
+   * @throws An error if the database is not initialized.
    */
   async getIndexes(): Promise<string[]> {
     if (!this.db) throw new Error("Database not initialized");
@@ -263,17 +311,13 @@ export class SQLiteDatabase {
   }
 
   /**
-   * Clears all data from all tables (used for logout/reset)
+   * Deletes all data from all application tables.
    *
-   * This method deletes all records from:
-   * - messages
-   * - conversations
-   * - queued_messages
-   * - sync_metadata
-   * - logs
-   * - users
+   * This is a destructive operation that should only be used for features like
+   * user logout or a full application reset. It is executed within a transaction
+   * to ensure that all data is cleared atomically.
    *
-   * @throws Error if database is not initialized
+   * @throws An error if the database is not initialized or if the operation fails.
    */
   async clearAllData(): Promise<void> {
     if (!this.db) throw new Error("Database not initialized");
@@ -305,15 +349,13 @@ export class SQLiteDatabase {
   }
 
   /**
-   * Cleans up resources and closes the database connection
+   * Gracefully closes the database connection and cleans up resources.
    *
-   * This method:
-   * - Waits for any pending write operations to complete
-   * - Removes AppState subscription
-   * - Closes the database connection
-   * - Resets initialization state
+   * This method ensures that all pending write operations are completed before
+   * closing the connection, and it removes the AppState listener to prevent
+   * memory leaks.
    *
-   * @throws Error if cleanup fails
+   * @throws An error if the cleanup process fails.
    */
   async cleanup(): Promise<void> {
     try {

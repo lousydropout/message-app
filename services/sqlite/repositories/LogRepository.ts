@@ -2,6 +2,20 @@ import { SQLiteDatabase } from "@/services/sqlite/core/SQLiteDatabase";
 import { Log, LogLevel } from "@/types/Log";
 
 /**
+ * @fileoverview Log Repository - Manages diagnostic logs in the SQLite database.
+ *
+ * This repository provides an interface for all database operations related to
+ * logging. It allows the application to persist logs locally, which is essential
+ * for debugging user issues, monitoring application health, and analyzing
+ * performance. The repository includes methods for saving new log entries,
+ * retrieving them with various filters, and cleaning up old logs to manage
+ * storage space.
+ *
+ * @see loggerStore for how logs are generated and queued for saving.
+ * @see DiagnosticsScreen for how logs are displayed in the UI for debugging.
+ */
+
+/**
  * Log Repository - handles logging operations
  *
  * This repository provides methods for:
@@ -13,7 +27,11 @@ export class LogRepository {
   constructor(private db: SQLiteDatabase) {}
 
   /**
-   * Save a log entry to the database
+   * Saves a single log entry to the `logs` table.
+   *
+   * @param log The `Log` object to be saved.
+   * @returns A promise that resolves when the log is successfully inserted.
+   * @throws An error if the database operation fails.
    */
   async saveLog(log: Log): Promise<void> {
     const db = this.db.getDb();
@@ -40,7 +58,12 @@ export class LogRepository {
   }
 
   /**
-   * Get logs with optional filtering
+   * Retrieves a list of log entries, with optional filtering by minimum log level.
+   *
+   * @param limit The maximum number of logs to retrieve.
+   * @param minLevel The minimum `LogLevel` to include in the results.
+   * @returns A promise that resolves to an array of `Log` objects.
+   * @throws An error if the database query fails.
    */
   async getLogs(limit: number = 100, minLevel?: LogLevel): Promise<Log[]> {
     const db = this.db.getDb();
@@ -76,7 +99,12 @@ export class LogRepository {
   }
 
   /**
-   * Get logs by category
+   * Retrieves a list of log entries for a specific category.
+   *
+   * @param category The category to filter logs by.
+   * @param limit The maximum number of logs to retrieve.
+   * @returns A promise that resolves to an array of `Log` objects.
+   * @throws An error if the database query fails.
    */
   async getLogsByCategory(
     category: string,
@@ -104,7 +132,13 @@ export class LogRepository {
   }
 
   /**
-   * Clear old logs (older than specified days)
+   * Deletes log entries that are older than a specified number of days.
+   *
+   * This is a maintenance function to prevent the logs table from growing indefinitely.
+   *
+   * @param olderThanDays The number of days to keep logs for.
+   * @returns A promise that resolves when the old logs are deleted.
+   * @throws An error if the database operation fails.
    */
   async clearOldLogs(olderThanDays: number = 7): Promise<void> {
     const db = this.db.getDb();
@@ -121,7 +155,10 @@ export class LogRepository {
   }
 
   /**
-   * Clear all logs
+   * Deletes all log entries from the database.
+   *
+   * @returns A promise that resolves when all logs are cleared.
+   * @throws An error if the database operation fails.
    */
   async clearAllLogs(): Promise<void> {
     const db = this.db.getDb();

@@ -1,3 +1,21 @@
+/**
+ * @fileoverview ContactsList Component - A UI component for displaying a searchable list of friends.
+ *
+ * This component renders a list of the user's friends, providing real-time
+ * search functionality to filter the list. Each item in the list displays the
+ * friend's avatar (or initials), display name, email, and their current online
+ * status. The list is rendered using `@shopify/flash-list` for optimal
+ * performance with potentially long lists of contacts.
+ *
+ * The component supports callbacks for when a friend is selected or blocked,
+ * allowing the parent component to handle these interactions. Blocking a friend
+ * is implemented with a confirmation dialog to prevent accidental actions.
+ *
+ * @see ContactsScreen for where this component is used.
+ * @see useContactsStore for the state management of friends and blocking.
+ * @see userService for the logic to determine a user's online status.
+ */
+
 import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { useContactsStore } from "@/stores/contactsStore";
@@ -13,12 +31,23 @@ import {
   View,
 } from "react-native";
 
+/**
+ * Props for ContactsList component
+ */
 interface ContactsListProps {
+  /** Array of friends to display */
   friends: User[];
+  /** Callback when a friend is selected */
   onFriendSelect?: (friend: User) => void;
+  /** Callback when a friend is blocked */
   onBlockFriend?: (friend: User) => void;
 }
 
+/**
+ * Contacts list component
+ *
+ * Displays a searchable list of friends with options to select or block.
+ */
 export default function ContactsList({
   friends,
   onFriendSelect,
@@ -101,9 +130,12 @@ export default function ContactsList({
             </Text>
           </View>
         </View>
-        <View style={styles.messageButton}>
+        <TouchableOpacity
+          style={styles.messageButton}
+          onPress={() => onFriendSelect?.(item)}
+        >
           <Text style={styles.messageButtonText}>Message</Text>
-        </View>
+        </TouchableOpacity>
       </TouchableOpacity>
     );
   };

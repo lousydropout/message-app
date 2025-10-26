@@ -1,3 +1,19 @@
+/**
+ * @fileoverview FriendRequestCard Component - A card for displaying an incoming friend request.
+ *
+ * This component renders a card that presents the details of an incoming friend
+ * request, including the sender's name and email, and the date the request was
+ * sent. It provides two primary actions for the user: "Accept" and "Decline".
+ *
+ * The component manages its own loading state for these actions, showing an
+ * `ActivityIndicator` to provide visual feedback to the user while the request
+ * is being processed. It uses the `useContactsStore` to perform the actual
+ * accept or decline operations.
+ *
+ * @see ContactsScreen for where this component is used.
+ * @see useContactsStore for the `acceptRequest` and `declineRequest` actions.
+ */
+
 import { useContactsStore } from "@/stores/contactsStore";
 import { FriendRequest } from "@/types/FriendRequest";
 import React, { useState } from "react";
@@ -10,12 +26,23 @@ import {
   View,
 } from "react-native";
 
+/**
+ * Props for FriendRequestCard component
+ */
 interface FriendRequestCardProps {
+  /** Friend request data */
   request: FriendRequest;
+  /** Sender's display name */
   senderName: string;
+  /** Sender's email */
   senderEmail: string;
 }
 
+/**
+ * Friend request card component
+ *
+ * Displays an incoming friend request with options to accept or decline.
+ */
 export default function FriendRequestCard({
   request,
   senderName,

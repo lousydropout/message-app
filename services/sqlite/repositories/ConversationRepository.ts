@@ -7,6 +7,19 @@ import { Conversation } from "@/types/Conversation";
 import { Timestamp } from "firebase/firestore";
 
 /**
+ * @fileoverview Conversation Repository - Manages conversation data in SQLite.
+ *
+ * This repository is responsible for all database operations related to conversations,
+ * serving as a local cache for data synced from Firestore. It handles the
+ * transformation of data between the Firestore `Conversation` format and the
+ * SQLite-compatible `SQLiteConversation` format, which involves serializing
+ * complex types like arrays and nested objects into JSON strings.
+ *
+ * @see SQLiteService for how this repository is used.
+ * @see SchemaManager for the `conversations` table schema.
+ */
+
+/**
  * Conversation Repository - handles all conversation-related database operations
  *
  * This repository provides methods for:
@@ -34,7 +47,9 @@ export class ConversationRepository {
   }
 
   /**
-   * Convert SQLite INTEGER to Firestore Timestamp
+   * Converts a SQLite INTEGER (epoch milliseconds) back to a Firestore `Timestamp`.
+   * @param timestamp The epoch milliseconds from the SQLite database.
+   * @returns A Firestore `Timestamp` object.
    */
   private toFirestoreTimestamp(timestamp: number): Timestamp {
     return Timestamp.fromMillis(timestamp);
@@ -42,6 +57,10 @@ export class ConversationRepository {
 
   /**
    * Convert Firestore Conversation to SQLite format
+   *
+   * This involves serializing complex types like arrays and nested objects into JSON strings.
+   * @param conversation The `Conversation` object from Firestore.
+   * @returns An `SQLiteConversation` object ready for insertion into the database.
    */
   private conversationToSQLite(conversation: Conversation): SQLiteConversation {
     return {
@@ -65,7 +84,12 @@ export class ConversationRepository {
   }
 
   /**
-   * Convert SQLite conversation to Firestore format
+   * Converts a raw SQLite row into a `Conversation` object.
+   *
+   * This involves parsing JSON strings back into their original object/array
+   * formats and converting timestamps.
+   * @param row The `SQLiteConversation` object from the database.
+   * @returns A `Conversation` object.
    */
   private sqliteToConversation(row: SQLiteConversation): Conversation {
     return {
@@ -88,7 +112,16 @@ export class ConversationRepository {
   }
 
   /**
-   * Save a conversation to SQLite (from Firestore sync)
+   * Saves a conversation from Firestore to the local SQLite database.
+   *
+   * This method performs an "upsert" (INSERT OR REPLACE) to ensure the local
+   * cache is kept up-to-date with the latest data from Firestore. It includes
+   * a pre-insert guard to prevent foreign key constraint violations if the
+   * conversation's `lastMessage` doesn't yet exist in the local `messages` table.
+   *
+   * @param conversation The `Conversation` object to save.
+   * @returns A promise that resolves when the conversation is successfully saved.
+   * @throws An error if the database operation fails.
    */
   async saveConversation(conversation: Conversation): Promise<void> {
     const db = this.db.getDb();
@@ -145,7 +178,16 @@ export class ConversationRepository {
   }
 
   /**
-   * Get all conversations for a user (optimized)
+   * Retrieves all conversations for a specific user from the local cache.
+   *
+   * This method is optimized for performance by fetching all conversations and
+   * then filtering them in memory. This is generally faster than using a `LIKE`
+   * query on the JSON `participants` string in SQLite, especially as the number
+   * of conversations grows.
+   *
+   * @param userId The ID of the user whose conversations are to be fetched.
+   * @returns A promise that resolves to an array of `Conversation` objects.
+   * @throws An error if the database operation fails.
    */
   async getConversations(userId: string): Promise<Conversation[]> {
     const db = this.db.getDb();
@@ -255,7 +297,11 @@ export class ConversationRepository {
   }
 
   /**
-   * Get a single conversation by ID
+   * Retrieves a single conversation by its ID from the local cache.
+   *
+   * @param conversationId The ID of the conversation to retrieve.
+   * @returns A promise that resolves to the `Conversation` object or `null` if not found.
+   * @throws An error if the database operation fails.
    */
   async getConversation(conversationId: string): Promise<Conversation | null> {
     const db = this.db.getDb();

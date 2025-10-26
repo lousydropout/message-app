@@ -1,3 +1,21 @@
+/**
+ * @fileoverview Contacts Screen - Manages the user's social graph.
+ *
+ * This screen serves as the central hub for all social interactions within the
+ * application. It provides a tabbed interface that allows the user to switch
+ * between their list of friends, pending friend requests (both incoming and
+ * outgoing), and a user search view to discover new people.
+ *
+ * The screen is responsible for fetching and displaying the necessary data for
+ * each of these views, leveraging the `useContactsStore` for state management
+ * and the `userService` to fetch profiles for display. It also handles the
+ * creation of new direct conversations when a user taps on a friend in their list.
+ *
+ * @see useContactsStore for the state and actions related to friends and requests.
+ * @see ContactsList, FriendRequestCard, SentRequestCard, UserSearch for the
+ *      sub-components that render the different views.
+ */
+
 import ContactsList from "@/components/ContactsList";
 import FriendRequestCard from "@/components/FriendRequestCard";
 import SentRequestCard from "@/components/SentRequestCard";
@@ -18,6 +36,12 @@ import {
   View,
 } from "react-native";
 
+/**
+ * Contacts screen component
+ *
+ * Manages friends, friend requests, and user search.
+ * Displays tabs for different contact management views.
+ */
 export default function ContactsScreen() {
   const { user } = useAuthStore();
   const { friends, friendRequests, sentRequests, loading, loadFriends } =

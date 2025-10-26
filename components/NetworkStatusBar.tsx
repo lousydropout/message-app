@@ -1,3 +1,21 @@
+/**
+ * @fileoverview NetworkStatusBar Component - Displays real-time network and sync status.
+ *
+ * This component provides a persistent, at-a-glance indicator of the
+ * application's connection status. It renders a small, color-coded icon in the
+ * corner of the screen that reflects the current network state (online, offline,
+ * syncing, or error). Tapping on this indicator opens a detailed modal view
+ * with more information, such as the network type, message queue counts, and
+ * recent synchronization statistics.
+ *
+ * The component is a key part of the application's user experience for an
+ * offline-first architecture, providing clear and immediate feedback on the
+ * state of the connection to backend services.
+ *
+ * @see useConnectionStore for the state that powers this component.
+ * @see messagesStore for the queue processing logic triggered by this component.
+ */
+
 import { useConnectionStore } from "@/stores/connectionStore";
 import { logger } from "@/stores/loggerStore";
 import { useMessagesStore } from "@/stores/messagesStore";
@@ -13,6 +31,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+/**
+ * Network status bar component
+ *
+ * Displays connection status at the top of the screen with
+ * tap-to-expand detailed information.
+ */
 export default function NetworkStatusBar() {
   const [modalVisible, setModalVisible] = useState(false);
   const {

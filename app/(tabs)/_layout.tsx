@@ -1,3 +1,20 @@
+/**
+ * @fileoverview Tab Layout - Defines the main tab navigation for the application.
+ *
+ * This component sets up the primary navigation structure using `expo-router`'s
+ * `Tabs`. It defines the four main sections of the application: Home (conversation
+ * list), Contacts, Profile, and a Diagnostics screen for debugging.
+ *
+ * A key feature of this layout is the dynamic badge notifications on the "Home"
+ * and "Contacts" tabs. These badges provide at-a-glance information about the
+ * number of unread messages and pending friend requests, respectively. The
+ * component subscribes to the relevant stores to keep these counts up-to-date
+ * in real-time.
+ *
+ * @see useMessagesStore for unread message counts.
+ * @see useContactsStore for friend request counts.
+ */
+
 import { useAuthStore } from "@/stores/authStore";
 import { useContactsStore } from "@/stores/contactsStore";
 import { useMessagesStore } from "@/stores/messagesStore";
@@ -5,6 +22,12 @@ import { Tabs } from "expo-router";
 import React, { useEffect } from "react";
 import { Text } from "react-native";
 
+/**
+ * Tab layout component
+ *
+ * Sets up the main tab navigation and initializes conversations
+ * when user is authenticated. Displays badge counts for notifications.
+ */
 export default function TabLayout() {
   const { user } = useAuthStore();
   const { friendRequests, sentRequests } = useContactsStore();

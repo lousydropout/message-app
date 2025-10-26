@@ -1,13 +1,43 @@
+/**
+ * @fileoverview TypingIndicator Component - Displays an animated typing indicator.
+ *
+ * This component provides real-time feedback to the user when other participants
+ * in a conversation are typing. It renders a subtle animation of three bouncing
+ * dots, accompanied by text that identifies who is typing. The component is
+ * designed to handle multiple typists gracefully, updating the text to reflect
+ * scenarios with one, two, or more people typing.
+ *
+ * It fetches the display names of the typing users from the `userService` and
+ * ensures that the current user's own typing status is not displayed to them.
+ * The animation is implemented using React Native's `Animated` API for smooth
+ * and performant visuals.
+ *
+ * @see ConversationView for the component that integrates this indicator.
+ * @see useMessagesStore for the state that provides the list of typing users.
+ * @see messageService for the logic that updates typing status in Firestore.
+ */
+
 import userService from "@/services/userService";
 import { User } from "@/types/User";
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, StyleSheet, Text, View } from "react-native";
 
+/**
+ * Props for TypingIndicator component
+ */
 interface TypingIndicatorProps {
+  /** Array of user IDs who are currently typing */
   typingUsers: string[];
+  /** Current user's ID (to filter out) */
   currentUserId: string;
 }
 
+/**
+ * Typing indicator component
+ *
+ * Displays an animated typing indicator with user names when
+ * others are typing in the conversation.
+ */
 export function TypingIndicator({
   typingUsers,
   currentUserId,

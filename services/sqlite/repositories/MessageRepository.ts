@@ -8,22 +8,25 @@ import { Message } from "@/types/Message";
 import { Timestamp } from "firebase/firestore";
 
 /**
- * @fileoverview Message Repository - handles all message-related database operations
+ * @fileoverview Message Repository - Manages message data in the local SQLite database.
  *
- * This repository provides methods for:
- * - Saving messages (single and batch)
- * - Retrieving messages with pagination
- * - Full-text search using FTS5
- * - Message status updates and read tracking
+ * This repository is responsible for all CRUD (Create, Read, Update, Delete)
+ * operations on the `messages` table. It serves as the primary local cache for
+ * message data synced from Firestore, providing offline access and enabling
+ * features like full-text search. It includes optimized methods for batch
+ * saving, paginated retrieval, and context-aware queries (e.g., fetching
+ * messages around a specific timestamp).
  *
- * The MessageRepository is responsible for all CRUD operations on the messages table,
- * including complex operations like batch saving, search, and read status management.
+ * @see messagesStore for how this repository is used to manage the message cache.
+ * @see SchemaManager for the `messages` and `messages_fts` table schemas.
  */
 export class MessageRepository {
   constructor(private db: SQLiteDatabase) {}
 
   /**
-   * Convert Firestore Timestamp to SQLite INTEGER (epoch milliseconds)
+   * Converts a Firestore `Timestamp` object to a SQLite INTEGER (epoch milliseconds).
+   * @param timestamp The `Timestamp` object from Firestore.
+   * @returns An epoch milliseconds number.
    */
   private toSQLiteTimestamp(timestamp: TimestampInput): number {
     if (timestamp?.toMillis) {
@@ -39,14 +42,23 @@ export class MessageRepository {
   }
 
   /**
-   * Convert SQLite INTEGER to Firestore Timestamp
+   * Converts a SQLite INTEGER (epoch milliseconds) back to a Firestore `Timestamp`.
+   * @param timestamp The epoch milliseconds from the SQLite database.
+   * @returns A Firestore `Timestamp` object.
    */
   private toFirestoreTimestamp(timestamp: number): Timestamp {
     return Timestamp.fromMillis(timestamp);
   }
 
   /**
-   * Convert Firestore Message to SQLite format
+   * Converts a Firestore `Message` object to a format suitable for SQLite.
+   *
+   * This involves serializing complex types like the `readBy` and `aiFeatures`
+   * objects into JSON strings and converting Firestore `Timestamp` objects to
+   * epoch milliseconds.
+   *
+   * @param message The `Message` object from Firestore.
+   * @returns An `SQLiteMessage` object ready for insertion into the database.
    */
   private messageToSQLite(message: Message): SQLiteMessage {
     return {
@@ -78,7 +90,13 @@ export class MessageRepository {
   }
 
   /**
-   * Convert SQLite message to Firestore format
+   * Converts a raw SQLite row into a `Message` object.
+   *
+   * This involves parsing JSON strings back into their original object formats
+   * and converting epoch millisecond timestamps back to Firestore `Timestamp` objects.
+   *
+   * @param row The `SQLiteMessage` object from the database.
+   * @returns A `Message` object.
    */
   private sqliteToMessage(row: SQLiteMessage): Message {
     const readByParsed = JSON.parse(row.readBy);
@@ -108,7 +126,17 @@ export class MessageRepository {
   }
 
   /**
-   * Save a batch of messages to SQLite
+   * Saves a batch of messages to the SQLite database with high efficiency.
+   *
+   * This method is optimized to handle both small and large batches of messages.
+   * For small batches (<= 10 messages), it uses a simple series of individual writes.
+   * For larger batches, it uses a manual transaction with batched `INSERT` statements
+   * to avoid exceeding SQLite's 999-parameter limit per query and to ensure
+   * atomicity and performance.
+   *
+   * @param messages An array of `Message` objects to save.
+   * @returns A promise that resolves when the batch save is complete.
+   * @throws An error if the database operation fails.
    */
   async saveMessagesBatch(messages: Message[]): Promise<void> {
     if (messages.length === 0) return;
@@ -218,7 +246,13 @@ export class MessageRepository {
   }
 
   /**
-   * Save a message to SQLite (from Firestore sync)
+   * Saves a single message to the SQLite database.
+   *
+   * This performs an "upsert" (INSERT OR REPLACE) operation.
+   *
+   * @param message The `Message` object to save.
+   * @returns A promise that resolves when the message is saved.
+   * @throws An error if the database operation fails.
    */
   async saveMessage(message: Message): Promise<void> {
     const db = this.db.getDb();
@@ -252,7 +286,13 @@ export class MessageRepository {
   }
 
   /**
-   * Get the latest message timestamp for a conversation
+   * Retrieves the timestamp of the most recent message in a conversation.
+   *
+   * This is used to determine the starting point for an incremental sync,
+   * allowing the app to fetch only the messages it has missed.
+   *
+   * @param conversationId The ID of the conversation.
+   * @returns A promise that resolves to the timestamp of the latest message, or 0 if none exists.
    */
   async getLatestMessageTimestamp(conversationId: string): Promise<number> {
     const db = this.db.getDb();
@@ -274,7 +314,13 @@ export class MessageRepository {
   }
 
   /**
-   * Get messages for a conversation with pagination
+   * Retrieves a paginated list of messages for a conversation.
+   *
+   * @param conversationId The ID of the conversation.
+   * @param limit The maximum number of messages to retrieve.
+   * @param offset The number of messages to skip (for pagination).
+   * @returns A promise that resolves to an array of `Message` objects.
+   * @throws An error if the database query fails.
    */
   async getMessages(
     conversationId: string,
@@ -300,7 +346,17 @@ export class MessageRepository {
   }
 
   /**
-   * Get messages around a specific timestamp (for jump-to-message)
+   * Retrieves messages centered around a specific timestamp.
+   *
+   * This is useful for features like "jump to message" from a search result,
+   * where the UI needs to display the context around a particular message.
+   *
+   * @param conversationId The ID of the conversation.
+   * @param targetTimestamp The timestamp to center the results around.
+   * @param beforeCount The number of messages to fetch before the target.
+   * @param afterCount The number of messages to fetch after the target.
+   * @returns A promise that resolves to an array of `Message` objects.
+   * @throws An error if the database query fails.
    */
   async getMessagesAroundTimestamp(
     conversationId: string,
@@ -345,7 +401,16 @@ export class MessageRepository {
   }
 
   /**
-   * Search messages using FTS5 full-text search (fallback to LIKE if FTS5 unavailable)
+   * Searches for messages using the FTS5 full-text search extension.
+   *
+   * If the FTS5 virtual table is available, it performs an efficient full-text
+   * search. If not, it falls back to a slower `LIKE` query to ensure functionality.
+   *
+   * @param searchQuery The text to search for.
+   * @param conversationId An optional ID to limit the search to a specific conversation.
+   * @param limit The maximum number of search results to return.
+   * @returns A promise that resolves to an array of `SearchResult` objects.
+   * @throws An error if the search operation fails.
    */
   async searchMessages(
     searchQuery: string,
@@ -420,7 +485,15 @@ export class MessageRepository {
   }
 
   /**
-   * Load recent messages for a conversation (for windowed Zustand) - optimized
+   * Loads a batch of recent messages for a conversation.
+   *
+   * This method is optimized for quickly loading the initial message view
+   * when a user opens a conversation.
+   *
+   * @param conversationId The ID of the conversation.
+   * @param limit The maximum number of recent messages to load.
+   * @returns A promise that resolves to an array of `Message` objects.
+   * @throws An error if the database query fails.
    */
   async loadRecentMessages(
     conversationId: string,
@@ -521,7 +594,13 @@ export class MessageRepository {
   }
 
   /**
-   * Delete old messages (for cleanup)
+   * Deletes messages from the database that are older than a given timestamp.
+   *
+   * This is a maintenance function to manage the size of the local cache.
+   *
+   * @param olderThanTimestamp The timestamp before which messages should be deleted.
+   * @returns A promise that resolves to the number of messages deleted.
+   * @throws An error if the delete operation fails.
    */
   async deleteOldMessages(olderThanTimestamp: number): Promise<number> {
     const db = this.db.getDb();
@@ -539,7 +618,14 @@ export class MessageRepository {
   }
 
   /**
-   * Save a message to SQLite cache (distinct from queued messages)
+   * Saves a message to the local cache.
+   *
+   * This is an "upsert" (INSERT OR REPLACE) operation, typically used to update
+   * the local cache with data from Firestore.
+   *
+   * @param message The `Message` object to save.
+   * @returns A promise that resolves when the message is saved.
+   * @throws An error if the database operation fails.
    */
   async saveMessageToCache(message: Message): Promise<void> {
     const db = this.db.getDb();
@@ -573,7 +659,15 @@ export class MessageRepository {
   }
 
   /**
-   * Mark all messages in a conversation as read by a specific user
+   * Marks all messages in a conversation as read by a specific user.
+   *
+   * This method uses SQLite's `json_set` function to efficiently update the
+   * `readBy` JSON object for all relevant messages in a single query.
+   *
+   * @param conversationId The ID of the conversation.
+   * @param userId The ID of the user who has read the messages.
+   * @returns A promise that resolves when the update is complete.
+   * @throws An error if the database operation fails.
    */
   async markConversationAsRead(
     conversationId: string,

@@ -1,3 +1,20 @@
+/**
+ * @fileoverview Profile Screen - Displays user information and application settings.
+ *
+ * This screen provides a centralized location for users to view their profile
+ * details, including their display name and email address. It also displays
+ * their current settings for language preferences and AI features.
+ *
+ * From this screen, users can navigate to the profile editing screen to make
+ * changes to their settings. It also contains the "Sign Out" button, which
+ * includes a confirmation dialog to prevent accidental logouts. The screen's
+ * data is sourced from the `useAuthStore`, ensuring that it always reflects the
+ * most up-to-date information for the currently logged-in user.
+ *
+ * @see useAuthStore for the user profile data and logout action.
+ * @see ProfileEditScreen for the screen where users can modify their settings.
+ */
+
 import { useAuthStore } from "@/stores/authStore";
 import { Link } from "expo-router";
 import React from "react";
@@ -10,6 +27,12 @@ import {
   View,
 } from "react-native";
 
+/**
+ * Profile screen component
+ *
+ * Displays user profile information and provides access to
+ * profile editing and logout functionality.
+ */
 export default function ProfileScreen() {
   const { user, userProfile, logout } = useAuthStore();
 

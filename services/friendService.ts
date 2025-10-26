@@ -1,3 +1,39 @@
+/**
+ * @fileoverview Friend Service - Manages friendships and friend requests.
+ *
+ * This service implements the application's social features, including sending,
+ * accepting, and declining friend requests, as well as managing the list of
+ * friends for each user. It uses a combination of a top-level `friendRequests`
+ * collection and a `friends` subcollection within each user document.
+ *
+ * @see /docs/friends-and-presence.md for a detailed explanation of the data model.
+ * @see contactsStore for how this service is used in the application's state.
+ */
+
+/**
+ * @fileoverview Friend Service - Manages friendships and friend requests
+ *
+ * This service handles:
+ * - Sending, accepting, and declining friend requests
+ * - Managing friends subcollection (one-way relationships)
+ * - Friend status checking
+ * - Cleaning up declined friend requests
+ *
+ * Key features:
+ * - Friend requests stored in top-level collection
+ * - Friends stored in subcollection: users/{userId}/friends/{friendId}
+ * - Bidirectional relationships created by each user separately
+ * - Status-based request workflow (pending, accepted, declined)
+ *
+ * @notes
+ * The friendship model is based on a `friends` subcollection within each user's
+ * document. A friendship is considered established only when *both* users have
+ * a document for the other in their respective `friends` subcollections. This
+ * design allows for scalable friend lookups (O(1) complexity) and simplifies
+ * security rules. The `friendRequests` collection serves as an audit trail and
+ * a transactional record for managing the lifecycle of a friend request.
+ */
+
 import { db } from "@/config/firebase";
 import { Friend } from "@/types/Friend";
 import { FriendRequest } from "@/types/FriendRequest";
@@ -19,6 +55,9 @@ import {
 export class FriendService {
   private static instance: FriendService;
 
+  /**
+   * Get singleton instance of FriendService
+   */
   static getInstance(): FriendService {
     if (!FriendService.instance) {
       FriendService.instance = new FriendService();
@@ -28,6 +67,15 @@ export class FriendService {
 
   /**
    * Send a friend request
+   *
+   * Creates a friend request document in Firestore. It includes checks to prevent
+   * duplicate requests or sending a request to an existing friend. If a previous
+   * request was declined, it is deleted to allow a new one to be sent.
+   *
+   * @param fromUserId - The ID of the user sending the request.
+   * @param toUserId - The ID of the user receiving the request.
+   * @returns A promise that resolves when the request is successfully sent.
+   * @throws An error if a pending request already exists or if the users are already friends.
    */
   async sendFriendRequest(fromUserId: string, toUserId: string): Promise<void> {
     try {
@@ -71,7 +119,21 @@ export class FriendService {
   }
 
   /**
-   * Accept a friend request
+   * Accepts a friend request, creating a one-way friendship link.
+   *
+   * This method performs two key actions:
+   * 1. Updates the friend request's status to "accepted" for auditing purposes.
+   * 2. Adds a document to the recipient's `friends` subcollection, representing
+   *    the sender as a friend.
+   *
+   * @param requestId - The ID of the friend request to accept.
+   * @returns A promise that resolves when the operation is complete.
+   * @throws An error if the friend request is not found.
+   *
+   * @note This only creates the friendship in one direction (recipient -> sender).
+   * The sender's client is expected to listen for this change via a real-time
+   * subscription and then call `addFriendToSubcollection` to complete the
+   * bidirectional relationship.
    */
   async acceptFriendRequest(requestId: string): Promise<void> {
     try {
@@ -107,7 +169,15 @@ export class FriendService {
   }
 
   /**
-   * Decline a friend request
+   * Declines a friend request by updating its status.
+   *
+   * The declined request document is kept in Firestore for auditing and to
+   * prevent new requests from being sent immediately, though `sendFriendRequest`
+   * will delete it if a new request is attempted.
+   *
+   * @param requestId - The ID of the friend request to decline.
+   * @returns A promise that resolves when the request is successfully declined.
+   * @throws An error if the update operation fails.
    */
   async declineFriendRequest(requestId: string): Promise<void> {
     try {
@@ -123,7 +193,14 @@ export class FriendService {
   }
 
   /**
-   * Delete a friend request (for cleaning up declined requests)
+   * Deletes a friend request document from Firestore.
+   *
+   * This is primarily used to clean up declined requests to allow a user
+   * to send a new request to the same person.
+   *
+   * @param requestId - The ID of the friend request to delete.
+   * @returns A promise that resolves when the document is deleted.
+   * @throws An error if the deletion fails.
    */
   async deleteFriendRequest(requestId: string): Promise<void> {
     try {
@@ -136,7 +213,12 @@ export class FriendService {
   }
 
   /**
-   * Get all friend requests for a user
+   * Retrieves all pending friend requests for a given user.
+   *
+   * @param userId - The ID of the user whose incoming requests are to be fetched.
+   * @returns A promise that resolves to an array of `FriendRequest` objects.
+   * @throws An error if the query fails.
+   * @note Sorts requests by creation date on the client-side to avoid needing a composite index.
    */
   async getFriendRequests(userId: string): Promise<FriendRequest[]> {
     try {
@@ -164,7 +246,12 @@ export class FriendService {
   }
 
   /**
-   * Get sent friend requests by a user
+   * Retrieves all pending friend requests sent by a given user.
+   *
+   * @param userId - The ID of the user whose sent requests are to be fetched.
+   * @returns A promise that resolves to an array of `FriendRequest` objects.
+   * @throws An error if the query fails.
+   * @note Sorts requests by creation date on the client-side.
    */
   async getSentFriendRequests(userId: string): Promise<FriendRequest[]> {
     try {
@@ -192,7 +279,14 @@ export class FriendService {
   }
 
   /**
-   * Check if two users are friends
+   * Checks if a friendship exists from `userId1` to `userId2`.
+   *
+   * This check is one-directional. For a full bidirectional friendship check,
+   * this method would need to be called twice, swapping the user IDs.
+   *
+   * @param userId1 - The ID of the user whose friend list is being checked.
+   * @param userId2 - The ID of the potential friend.
+   * @returns A promise that resolves to `true` if `userId2` is in `userId1`'s friends, `false` otherwise.
    */
   async areFriends(userId1: string, userId2: string): Promise<boolean> {
     try {
@@ -207,7 +301,15 @@ export class FriendService {
   }
 
   /**
-   * Get friend request between two users (searches both directions)
+   * Retrieves a friend request between two users, regardless of direction.
+   *
+   * This is useful for checking if a request already exists before sending a new one.
+   * It performs two parallel queries to check both `fromUser -> toUser` and
+   * `toUser -> fromUser`.
+   *
+   * @param fromUserId - The ID of the first user.
+   * @param toUserId - The ID of the second user.
+   * @returns A promise that resolves to the `FriendRequest` object or `null` if none exists.
    */
   async getFriendRequest(
     fromUserId: string,
@@ -249,7 +351,14 @@ export class FriendService {
   }
 
   /**
-   * Get all friends for a user (returns friend IDs)
+   * Retrieves the IDs of all friends for a given user.
+   *
+   * This method reads the `friends` subcollection for the specified user and
+   * returns an array of friend user IDs.
+   *
+   * @param userId - The ID of the user whose friends are to be fetched.
+   * @returns A promise that resolves to an array of friend user IDs.
+   * @throws An error if the query fails.
    */
   async getFriends(userId: string): Promise<string[]> {
     try {
@@ -263,7 +372,16 @@ export class FriendService {
   }
 
   /**
-   * Add a friend to the current user's subcollection
+   * Adds a friend document to a user's `friends` subcollection.
+   *
+   * This is a key step in establishing the bidirectional friendship. It should be
+   * called by a user's client when they detect that another user has accepted
+   * their friend request.
+   *
+   * @param userId - The ID of the user whose friend list is being updated.
+   * @param friendId - The ID of the friend to add.
+   * @returns A promise that resolves when the friend is successfully added.
+   * @throws An error if the write operation fails.
    */
   async addFriendToSubcollection(
     userId: string,
@@ -281,8 +399,16 @@ export class FriendService {
   }
 
   /**
-   * Remove friend from the current user's subcollection only
-   * The other user will be notified via real-time subscription and remove from their own
+   * Removes a friend from a user's `friends` subcollection.
+   *
+   * This action is one-directional. The other user in the friendship is expected
+   * to perform the same action on their end to fully dissolve the connection.
+   * This is typically handled via real-time listeners that detect the change.
+   *
+   * @param userId - The ID of the user whose friend list is being updated.
+   * @param friendId - The ID of the friend to remove.
+   * @returns A promise that resolves when the friend is successfully removed.
+   * @throws An error if the deletion fails.
    */
   async removeFriend(userId: string, friendId: string): Promise<void> {
     try {
@@ -294,8 +420,16 @@ export class FriendService {
   }
 
   /**
-   * Get all accepted friend requests where the user was the sender
-   * Used to sync friends subcollection on app startup
+   * Retrieves all accepted friend requests sent by a user.
+   *
+   * This method is crucial for synchronizing the local state. For example, if a
+   * user sends a request and the other user accepts it while the sender is offline,
+   * this function allows the sender's client to discover the new friendship
+   * upon coming back online and update their own `friends` subcollection accordingly.
+   *
+   * @param userId - The ID of the user who sent the requests.
+   * @returns A promise that resolves to an array of accepted `FriendRequest` objects.
+   * @throws An error if the query fails.
    */
   async getAcceptedSentRequests(userId: string): Promise<FriendRequest[]> {
     try {

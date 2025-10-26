@@ -1,3 +1,23 @@
+/**
+ * @fileoverview MessageBubble Component - Renders an individual chat message.
+ *
+ * This component is responsible for displaying a single message within a
+ * conversation. It handles the visual differentiation between messages sent by
+ * the current user and those sent by others. It also displays metadata such as
+ * the sender's name (in group chats), the message timestamp, and the delivery
+ * status (e.g., "Sending...", "Read", "Failed").
+ *
+ * A key feature of this component is its integration with the AI translation
+ * service. Users can tap on a message received from another user to open a
+ * modal that provides a translation into their preferred language, along with
+ * any relevant cultural notes. This is facilitated by a call to a secure,
+ * serverless function that interfaces with the OpenAI API.
+ *
+ * @see ConversationView for the parent component that renders a list of these bubbles.
+ * @see useMessagesStore for the state that provides the message data.
+ * @see messageService for the logic related to message status and retries.
+ */
+
 import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { Message } from "@/types/Message";
@@ -16,17 +36,27 @@ import {
   View,
 } from "react-native";
 
+/**
+ * Props for MessageBubble component
+ */
 interface MessageBubbleProps {
+  /** Message to display */
   message: Message;
+  /** Optional sender user profile */
   sender?: User;
+  /** Whether to show sender display name */
   showDisplayName?: boolean;
+  /** Whether this is a group chat */
   isGroupChat?: boolean;
+  /** Callback for long-press action */
   onLongPress?: (message: Message) => void;
+  /** Callback for retry action (failed messages) */
   onRetry?: (message: Message) => void;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const MAX_BUBBLE_WIDTH = SCREEN_WIDTH * 0.85; // exact pixel width, avoids rounding bug
+/** Maximum bubble width to prevent overflow (85% of screen width) */
+const MAX_BUBBLE_WIDTH = SCREEN_WIDTH * 0.85;
 
 export function MessageBubble({
   message,

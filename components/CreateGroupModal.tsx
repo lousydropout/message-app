@@ -1,3 +1,20 @@
+/**
+ * @fileoverview CreateGroupModal Component - A modal for creating new group conversations.
+ *
+ * This component provides a full-screen modal interface that allows users to
+ * create a new group chat. It displays a list of the user's friends, allowing
+ * for multi-selection, and includes an input field for the group's name. The
+ * component has built-in validation to ensure that a group name is provided
+ * and that at least two friends are selected.
+ *
+ * Upon successful creation, it uses the `expo-router` to navigate the user
+ * directly to the newly created group conversation.
+ *
+ * @see ConversationsList for where this modal is triggered.
+ * @see useMessagesStore for the `createGroupConversation` action.
+ * @see useContactsStore for the list of friends to select from.
+ */
+
 import { useAuthStore } from "@/stores/authStore";
 import { useContactsStore } from "@/stores/contactsStore";
 import { useMessagesStore } from "@/stores/messagesStore";
@@ -16,11 +33,22 @@ import {
   View,
 } from "react-native";
 
+/**
+ * Props for CreateGroupModal component
+ */
 interface CreateGroupModalProps {
+  /** Whether the modal is visible */
   visible: boolean;
+  /** Callback to close the modal */
   onClose: () => void;
 }
 
+/**
+ * Create group modal component
+ *
+ * Allows users to create a new group conversation by selecting
+ * friends and providing a group name.
+ */
 export default function CreateGroupModal({
   visible,
   onClose,
@@ -92,10 +120,7 @@ export default function CreateGroupModal({
 
     return (
       <TouchableOpacity
-        style={[
-          styles.friendItem,
-          isSelected && styles.friendItemSelected,
-        ]}
+        style={[styles.friendItem, isSelected && styles.friendItemSelected]}
         onPress={() => handleFriendToggle(item.id)}
       >
         <View style={styles.friendInfo}>
@@ -170,7 +195,9 @@ export default function CreateGroupModal({
               (!groupName.trim() || selectedFriends.length < 2 || creating) &&
                 styles.createButtonDisabled,
             ]}
-            disabled={!groupName.trim() || selectedFriends.length < 2 || creating}
+            disabled={
+              !groupName.trim() || selectedFriends.length < 2 || creating
+            }
           >
             <Text style={styles.createText}>Create</Text>
           </TouchableOpacity>
@@ -198,7 +225,6 @@ export default function CreateGroupModal({
               data={friends}
               renderItem={renderFriendItem}
               keyExtractor={(item) => item.id}
-              estimatedItemSize={60}
               showsVerticalScrollIndicator={false}
               ListEmptyComponent={
                 <View style={styles.emptyState}>

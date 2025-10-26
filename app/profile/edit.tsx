@@ -1,3 +1,21 @@
+/**
+ * @fileoverview Profile Edit Screen - Allows users to configure their settings.
+ *
+ * This screen provides a user-friendly interface for modifying profile settings,
+ * including language preferences and AI feature toggles. It pre-populates the
+ * form with the user's current settings from the `useAuthStore` and handles the
+ * submission of any changes.
+ *
+ * A key piece of logic in this screen is its ability to gracefully handle both
+ * profile creation and updates. If an attempt to update the profile fails (which
+ * can happen if a profile document was not created during sign-up), it
+ * automatically falls back to creating a new profile. This ensures a robust
+ * user experience, particularly for new users or in edge cases.
+ *
+ * @see useAuthStore for the `updateProfile` and `createProfile` actions.
+ * @see ProfileScreen for the screen that displays the saved settings.
+ */
+
 import { useAuthStore } from "@/stores/authStore";
 import { SUPPORTED_LANGUAGES, SupportedLanguageCode } from "@/types/User";
 import { useRouter } from "expo-router";
@@ -12,6 +30,12 @@ import {
   View,
 } from "react-native";
 
+/**
+ * Profile edit screen component
+ *
+ * Allows users to edit their language preferences and AI settings.
+ * Loads current profile data and updates it on save.
+ */
 export default function ProfileEditScreen() {
   const router = useRouter();
   const { userProfile, updateProfile, createProfile, loading, logout } =

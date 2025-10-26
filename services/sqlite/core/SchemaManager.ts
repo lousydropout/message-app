@@ -1,16 +1,22 @@
 import * as SQLite from "expo-sqlite";
 
 /**
- * @fileoverview Schema Manager - handles table creation and migrations
+ * @fileoverview Schema Manager - Handles the creation and migration of the SQLite database schema.
  *
- * This class manages all database schema operations including:
- * - Table creation with proper indexes
- * - Schema migrations for existing databases
- * - FTS5 full-text search setup
- * - Foreign key constraints and WAL mode configuration
+ * This class is the single source of truth for the application's local database
+ * schema. It is responsible for creating all tables, defining their columns and
+ * constraints, and setting up indexes to ensure optimal query performance. It
+ * also includes logic for handling schema migrations, allowing the database to
+ * be updated gracefully as the application evolves.
  *
- * The SchemaManager ensures that the database schema is always up-to-date
- * and handles backward compatibility for existing databases.
+ * Key responsibilities include:
+ * - Enabling performance and integrity features like WAL mode and foreign keys.
+ * - Defining the schema for all application tables (e.g., messages, conversations, users).
+ * - Creating a rich set of indexes to speed up common queries.
+ * - Setting up the FTS5 virtual table for efficient full-text search.
+ * - Implementing migration logic to add new columns to existing tables without data loss.
+ *
+ * @see SQLiteDatabase for how this class is used during database initialization.
  */
 export class SchemaManager {
   /**
@@ -72,7 +78,15 @@ export class SchemaManager {
   }
 
   /**
-   * Create messages table with indexes and FTS5 support
+   * Creates the `messages` table, along with its indexes and FTS5 virtual table.
+   *
+   * The table includes a foreign key constraint on `conversationId` to ensure
+   * data integrity. A comprehensive set of indexes is created to optimize
+   * various query patterns, such as fetching messages by conversation, sender,
+   * or status.
+   *
+   * @param db The SQLite database instance.
+   * @private
    */
   private async createMessagesTable(db: SQLite.SQLiteDatabase): Promise<void> {
     // Create messages table
@@ -199,7 +213,10 @@ export class SchemaManager {
   }
 
   /**
-   * Create conversations table with indexes
+   * Creates the `conversations` table and its indexes.
+   *
+   * @param db The SQLite database instance.
+   * @private
    */
   private async createConversationsTable(
     db: SQLite.SQLiteDatabase
@@ -244,7 +261,14 @@ export class SchemaManager {
   }
 
   /**
-   * Create users table with migration support
+   * Creates the `users` table and handles migrations for adding new columns.
+   *
+   * The migration logic checks for the existence of the `online` and `heartbeat`
+   * columns and adds them if they are missing, ensuring that existing users
+   * can update to newer versions of the app without losing their data.
+   *
+   * @param db The SQLite database instance.
+   * @private
    */
   private async createUsersTable(db: SQLite.SQLiteDatabase): Promise<void> {
     await db.execAsync(`
@@ -300,7 +324,15 @@ export class SchemaManager {
   }
 
   /**
-   * Create queued_messages table with migration support
+   * Creates the `queued_messages` table and handles complex schema migrations.
+   *
+   * The migration logic for this table is particularly important, as it handles
+   * the transition from an old `tempId` format to the new UUID-based `messageId`.
+   * It includes fallback mechanisms to ensure that the migration succeeds even
+   * in unexpected scenarios, prioritizing data integrity and application stability.
+   *
+   * @param db The SQLite database instance.
+   * @private
    */
   private async createQueuedMessagesTable(
     db: SQLite.SQLiteDatabase
@@ -467,7 +499,10 @@ export class SchemaManager {
   }
 
   /**
-   * Create logs table with indexes
+   * Creates the `logs` table and its indexes.
+   *
+   * @param db The SQLite database instance.
+   * @private
    */
   private async createLogsTable(db: SQLite.SQLiteDatabase): Promise<void> {
     await db.execAsync(`
@@ -495,7 +530,10 @@ export class SchemaManager {
   }
 
   /**
-   * Create sync_metadata table
+   * Creates the `sync_metadata` table for tracking synchronization state.
+   *
+   * @param db The SQLite database instance.
+   * @private
    */
   private async createSyncMetadataTable(
     db: SQLite.SQLiteDatabase

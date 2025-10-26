@@ -1,3 +1,16 @@
+/**
+ * @fileoverview SentRequestCard Component - Renders a card for an outgoing friend request.
+ *
+ * This component is used to display a friend request that the current user has
+ * sent to another user. It shows the recipient's details and provides a "Cancel"
+ * button to allow the user to withdraw the request. The component handles the
+ * asynchronous nature of this action by displaying a loading indicator and
+ * providing feedback to the user upon success or failure.
+ *
+ * @see ContactsScreen for the UI where this component is displayed.
+ * @see useContactsStore for the `cancelSentRequest` action.
+ */
+
 import { useContactsStore } from "@/stores/contactsStore";
 import { FriendRequest } from "@/types/FriendRequest";
 import React, { useState } from "react";
@@ -10,12 +23,23 @@ import {
   View,
 } from "react-native";
 
+/**
+ * Props for SentRequestCard component
+ */
 interface SentRequestCardProps {
+  /** Friend request data */
   request: FriendRequest;
+  /** Recipient's display name */
   recipientName: string;
+  /** Recipient's email */
   recipientEmail: string;
 }
 
+/**
+ * Sent request card component
+ *
+ * Displays a sent friend request with option to cancel.
+ */
 export default function SentRequestCard({
   request,
   recipientName,

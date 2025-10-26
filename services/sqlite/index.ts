@@ -1,15 +1,20 @@
-import { SQLiteDatabase } from "@/services/sqlite/core/SQLiteDatabase";
-import { QueuedMessage, SearchResult } from "@/services/sqlite/core/types";
-import { ConversationRepository } from "@/services/sqlite/repositories/ConversationRepository";
-import { LogRepository } from "@/services/sqlite/repositories/LogRepository";
-import { MessageQueueRepository } from "@/services/sqlite/repositories/MessageQueueRepository";
-import { MessageRepository } from "@/services/sqlite/repositories/MessageRepository";
-import { SyncMetadataRepository } from "@/services/sqlite/repositories/SyncMetadataRepository";
-import { UserRepository } from "@/services/sqlite/repositories/UserRepository";
-import { Conversation } from "@/types/Conversation";
-import { Log, LogLevel } from "@/types/Log";
-import { Message } from "@/types/Message";
-import { User } from "@/types/User";
+/**
+ * @fileoverview SQLite Service Facade - The primary interface for all local database operations.
+ *
+ * This service acts as a centralized facade for interacting with the application's
+ * local SQLite database. It follows the repository pattern, delegating specific
+ * data operations (e.g., for messages, conversations, users) to specialized
+ * repository classes. This approach promotes a clean separation of concerns and
+ * makes the database logic more modular and maintainable.
+ *
+ * The `SQLiteService` is responsible for:
+ * - Initializing the database and all repositories.
+ * - Providing a unified, backward-compatible API for all database operations.
+ * - Managing the database lifecycle, including initialization and cleanup.
+ *
+ * @see SQLiteDatabase for the core database connection and write queue management.
+ * @see /services/sqlite/repositories/ for the individual repository implementations.
+ */
 
 /**
  * @fileoverview SQLite Service - Main facade providing backward-compatible API

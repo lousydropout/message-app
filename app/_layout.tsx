@@ -1,3 +1,26 @@
+/**
+ * @fileoverview Root Layout - The main entry point and initialization hub for the application.
+ *
+ * This component serves as the root of the application's UI and is responsible
+ * for orchestrating the initialization of all core services and systems. It
+ * sets up the application's theme, manages the navigation stack, and handles
+ * the critical logic for routing users based on their authentication status.
+ *
+ * The initialization sequence includes:
+ * 1.  **SQLite Database**: Sets up the local database for offline storage.
+ * 2.  **Authentication**: Listens for changes in the user's authentication state.
+ * 3.  **Connection Monitoring**: Tracks network connectivity for the offline-first architecture.
+ * 4.  **Store Connections**: Establishes communication between different state stores.
+ * 5.  **Presence Management**: Handles real-time user online status.
+ *
+ * This component ensures that all necessary systems are ready before rendering
+ * the main application UI, providing a stable and reliable user experience.
+ *
+ * @see setupStoreConnections for the inter-store communication logic.
+ * @see useAuthStore for the authentication state management.
+ * @see sqliteService for the local database initialization.
+ */
+
 import {
   DarkTheme,
   DefaultTheme,
@@ -20,10 +43,16 @@ import { useContactsStore } from "@/stores/contactsStore";
 import { useLoggerStore } from "@/stores/loggerStore";
 import { setupStoreConnections } from "@/stores/setupStores";
 
+/** Navigation settings for Expo Router */
 export const unstable_settings = {
   anchor: "(tabs)",
 };
 
+/**
+ * Root layout component
+ *
+ * Initializes all core services and manages navigation based on auth state.
+ */
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const { user, userProfile, loading, initialize } = useAuthStore();

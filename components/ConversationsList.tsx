@@ -1,3 +1,27 @@
+/**
+ * @fileoverview ConversationsList Component - Renders a real-time list of user conversations.
+ *
+ * This component is the primary view on the application's home screen. It is
+ * responsible for fetching, displaying, and managing the user's list of
+ * conversations. It subscribes to real-time updates from the `messagesStore`
+ * to ensure the list is always current, showing new messages and unread counts
+ * as they arrive.
+ *
+ * Key Features:
+ * - **Real-time Updates**: Subscribes to the `messagesStore` to reflect live
+ *   changes to the conversation list.
+ * - **Efficient Rendering**: Uses `@shopify/flash-list` to efficiently render
+ *   potentially long lists of conversations.
+ * - **User Experience**: Includes pull-to-refresh functionality, a detailed
+ *   empty state, and clear visual indicators for unread messages.
+ * - **Functionality**: Provides buttons to start a new direct message or create
+ *   a new group, and handles navigation to individual conversation screens.
+ *
+ * @see messagesStore for the state and actions that power this component.
+ * @see HomeScreen where this component is rendered.
+ * @see CreateGroupModal for the group creation UI.
+ */
+
 import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { logger } from "@/stores/loggerStore";
@@ -19,6 +43,12 @@ import {
 } from "react-native";
 import CreateGroupModal from "./CreateGroupModal";
 
+/**
+ * Conversations list component
+ *
+ * Displays all conversations for the current user with real-time updates.
+ * Allows navigation to individual conversations and group creation.
+ */
 export function ConversationsList() {
   const [refreshing, setRefreshing] = useState(false);
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);

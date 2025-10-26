@@ -1,3 +1,40 @@
+/**
+ * @fileoverview Contacts Store (Zustand) - Manages the user's social graph.
+ *
+ * This store is the central hub for all contact-related information and actions,
+ * including the user's friends list, incoming and outgoing friend requests, and
+ * blocked users. It leverages real-time subscriptions to Firestore to ensure that
+ * the user's social graph is always up-to-date.
+ *
+ * The store's logic is built around the concept of a `friends` subcollection
+ * in Firestore, which provides a scalable way to manage friendships. It also
+ * includes a sophisticated system of real-time listeners for friend requests,
+ * which not only keeps the data fresh but also provides timely notifications to
+ * the user for events like new requests or accepted invitations.
+ *
+ * @see friendService for the underlying Firestore operations for friends and requests.
+ * @see userService for user search and blocking functionality.
+ * @see ContactsScreen for the primary UI that uses this store.
+ */
+
+/**
+ * @fileoverview Contacts Store - Manages friends, friend requests, and user blocking
+ *
+ * This store handles:
+ * - Friend list management with real-time updates
+ * - Friend request sending, accepting, and declining
+ * - User blocking and unblocking
+ * - User search functionality
+ * - Real-time subscriptions for friend requests and friends subcollection
+ * - Status checking (stranger, pending, friend, blocked)
+ *
+ * Key features:
+ * - Firestore subcollection for friends (one-way relationships)
+ * - Friend request system with status tracking
+ * - Toast notifications for friend request events
+ * - Background sync of accepted friend requests
+ */
+
 import { db } from "@/config/firebase";
 import friendService from "@/services/friendService";
 import userService from "@/services/userService";
@@ -9,6 +46,9 @@ import { User } from "@/types/User";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { create } from "zustand";
 
+/**
+ * Contacts store state interface
+ */
 export interface ContactsState {
   friends: User[];
   friendRequests: FriendRequest[];
@@ -56,26 +96,13 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
   searchResults: [],
   searchLoading: false,
 
-  async loadFriends(userId: string) {
-    set({ loading: true });
-    try {
-      const friendIds = await friendService.getFriends(userId);
-      const friends = await userService.getUsersByIds(friendIds);
-
-      // Subscribe to real-time updates for all friends
-      if (friendIds.length > 0) {
-        const { subscribeToUsers } = useUsersStore.getState();
-        subscribeToUsers(friendIds);
-      }
-
-      set({ friends, loading: false });
-    } catch (error) {
-      console.error("Error loading friends:", error);
-      set({ loading: false });
-      throw error;
-    }
-  },
-
+  /**
+   * Loads the user's friend requests from Firestore.
+   *
+   * @param userId The ID of the current user.
+   * @returns A promise that resolves when the friend requests are loaded.
+   * @throws An error if the operation fails.
+   */
   async loadFriendRequests(userId: string) {
     set({ loading: true });
     try {
@@ -88,6 +115,13 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     }
   },
 
+  /**
+   * Loads the user's sent friend requests from Firestore.
+   *
+   * @param userId The ID of the current user.
+   * @returns A promise that resolves when the sent requests are loaded.
+   * @throws An error if the operation fails.
+   */
   async loadSentRequests(userId: string) {
     set({ loading: true });
     try {
@@ -100,6 +134,14 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     }
   },
 
+  /**
+   * Sends a friend request to another user.
+   *
+   * @param fromUserId The ID of the user sending the request.
+   * @param toUserId The ID of the user receiving the request.
+   * @returns A promise that resolves when the request is sent.
+   * @throws An error if the operation fails.
+   */
   async sendRequest(fromUserId: string, toUserId: string) {
     try {
       await friendService.sendFriendRequest(fromUserId, toUserId);
@@ -112,6 +154,16 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     }
   },
 
+  /**
+   * Accepts an incoming friend request.
+   *
+   * This action updates the request status in Firestore and reloads the
+   * local friends list to include the new friend.
+   *
+   * @param requestId The ID of the friend request to accept.
+   * @returns A promise that resolves when the request is accepted.
+   * @throws An error if the operation fails.
+   */
   async acceptRequest(requestId: string) {
     try {
       await friendService.acceptFriendRequest(requestId);
@@ -134,6 +186,13 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     }
   },
 
+  /**
+   * Declines an incoming friend request.
+   *
+   * @param requestId The ID of the friend request to decline.
+   * @returns A promise that resolves when the request is declined.
+   * @throws An error if the operation fails.
+   */
   async declineRequest(requestId: string) {
     try {
       await friendService.declineFriendRequest(requestId);
@@ -150,6 +209,13 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     }
   },
 
+  /**
+   * Cancels a friend request that the current user has sent.
+   *
+   * @param requestId The ID of the friend request to cancel.
+   * @returns A promise that resolves when the request is canceled.
+   * @throws An error if the operation fails.
+   */
   async cancelSentRequest(requestId: string) {
     try {
       await friendService.deleteFriendRequest(requestId);
@@ -166,6 +232,14 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     }
   },
 
+  /**
+   * Blocks another user, which also removes them as a friend if they are one.
+   *
+   * @param userId The ID of the user performing the block.
+   * @param blockedUserId The ID of the user to block.
+   * @returns A promise that resolves when the user is blocked.
+   * @throws An error if the operation fails.
+   */
   async blockUser(userId: string, blockedUserId: string) {
     try {
       await userService.blockUser(userId, blockedUserId);
@@ -189,6 +263,14 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     }
   },
 
+  /**
+   * Unblocks a user.
+   *
+   * @param userId The ID of the user performing the unblock.
+   * @param blockedUserId The ID of the user to unblock.
+   * @returns A promise that resolves when the user is unblocked.
+   * @throws An error if the operation fails.
+   */
   async unblockUser(userId: string, blockedUserId: string) {
     try {
       await userService.unblockUser(userId, blockedUserId);
@@ -203,6 +285,14 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     }
   },
 
+  /**
+   * Searches for users by their display name or email.
+   *
+   * @param searchQuery The search term.
+   * @param currentUserId The ID of the current user, to exclude them from results.
+   * @returns A promise that resolves when the search is complete.
+   * @throws An error if the search fails.
+   */
   async searchUsers(searchQuery: string, currentUserId: string) {
     set({ searchLoading: true });
     try {
@@ -215,10 +305,52 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     }
   },
 
+  /**
+   * Clears the current user search results.
+   */
   clearSearchResults() {
     set({ searchResults: [] });
   },
 
+  /**
+   * Load user's friends list
+   *
+   * Fetches friend IDs from Firestore subcollection, loads user profiles,
+   * and subscribes to real-time updates for all friends.
+   *
+   * @param userId - User ID to load friends for
+   * @throws Error if loading fails
+   */
+  async loadFriends(userId: string) {
+    set({ loading: true });
+    try {
+      const friendIds = await friendService.getFriends(userId);
+      const friends = await userService.getUsersByIds(friendIds);
+
+      // Subscribe to real-time updates for all friends
+      if (friendIds.length > 0) {
+        const { subscribeToUsers } = useUsersStore.getState();
+        subscribeToUsers(friendIds);
+      }
+
+      set({ friends, loading: false });
+    } catch (error) {
+      console.error("Error loading friends:", error);
+      set({ loading: false });
+      throw error;
+    }
+  },
+
+  /**
+   * Get friendship status between two users
+   *
+   * Checks local state to determine the relationship status.
+   * Returns one of: "stranger", "pending", "friend", or "blocked"
+   *
+   * @param userId - Current user's ID
+   * @param targetUserId - Other user's ID
+   * @returns Friendship status
+   */
   getFriendStatus(
     userId: string,
     targetUserId: string
@@ -247,6 +379,16 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     return "stranger";
   },
 
+  /**
+   * Checks the friendship status between two users by querying Firestore.
+   *
+   * This provides a real-time check of the relationship status, which is useful
+   * when the local state might be stale.
+   *
+   * @param userId The ID of the current user.
+   * @param targetUserId The ID of the other user.
+   * @returns A promise that resolves to the friendship status.
+   */
   checkFriendRequestStatus: async (
     userId: string,
     targetUserId: string
@@ -279,6 +421,15 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     }
   },
 
+  /**
+   * Subscribes to real-time updates for incoming friend requests.
+   *
+   * This listener keeps the `friendRequests` array in the store up-to-date
+   * and also triggers a toast notification when a new request is received.
+   *
+   * @param userId The ID of the current user.
+   * @returns An `unsubscribe` function to clean up the listener.
+   */
   subscribeToFriendRequests: (userId: string) => {
     const friendRequestsQuery = query(
       collection(db, "friendRequests"),
@@ -335,6 +486,16 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     return unsubscribe;
   },
 
+  /**
+   * Subscribes to real-time updates for sent friend requests.
+   *
+   * This keeps the `sentRequests` array in the store synchronized with any
+   * changes in the status of outgoing requests (e.g., if they are accepted or
+   * declined by the other user).
+   *
+   * @param userId The ID of the current user.
+   * @returns An `unsubscribe` function to clean up the listener.
+   */
   subscribeToSentRequests: (userId: string) => {
     const sentRequestsQuery = query(
       collection(db, "friendRequests"),
@@ -359,6 +520,17 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     return unsubscribe;
   },
 
+  /**
+   * Subscribes to friend requests sent by the current user that have been accepted.
+   *
+   * This is a key part of the bidirectional friendship model. When another user
+   * accepts a request, this listener detects the change and triggers the logic
+   * to add the new friend to the current user's own `friends` subcollection,
+   * completing the friendship link. It also shows a toast notification.
+   *
+   * @param userId The ID of the current user.
+   * @returns An `unsubscribe` function to clean up the listener.
+   */
   subscribeToAcceptedRequests: (userId: string) => {
     const acceptedRequestsQuery = query(
       collection(db, "friendRequests"),
@@ -420,6 +592,15 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     return unsubscribe;
   },
 
+  /**
+   * Subscribes to changes in the user's `friends` subcollection.
+   *
+   * This ensures that the local friends list is always in sync with Firestore,
+   * automatically reflecting any additions or removals of friends.
+   *
+   * @param userId The ID of the current user.
+   * @returns An `unsubscribe` function to clean up the listener.
+   */
   subscribeToFriendsSubcollection: (userId: string) => {
     const friendsRef = collection(db, "users", userId, "friends");
 
@@ -445,6 +626,18 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     return unsubscribe;
   },
 
+  /**
+   * Syncs the local friends list based on accepted friend requests.
+   *
+   * This is a cleanup and synchronization mechanism that runs on startup. It
+   * fetches all friend requests sent by the user that have been accepted, ensures
+   * that the corresponding friends are present in the user's `friends`
+   * subcollection, and then deletes the processed request documents.
+   *
+   * @param userId The ID of the current user.
+   * @returns A promise that resolves when the sync is complete.
+   * @throws An error if the operation fails.
+   */
   async syncFriendsFromAcceptedRequests(userId: string) {
     console.log("Starting syncFriendsFromAcceptedRequests");
     try {

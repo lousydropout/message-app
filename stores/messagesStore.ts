@@ -1,3 +1,52 @@
+/**
+ * @fileoverview Messages Store (Zustand) - The core of the real-time messaging system.
+ *
+ * This store is the most complex and central piece of the application's state
+ * management. It orchestrates everything related to messaging, including fetching
+ * and displaying conversations and messages, handling real-time updates through
+ * Firestore subscriptions, managing an offline message queue, and synchronizing
+ * data when the application comes back online.
+ *
+ * Key Architectural Patterns:
+ * - **SQLite-first Loading**: For instant UI rendering, message and conversation
+ *   data is first loaded from the local SQLite database. Firestore is then used
+ *   to fetch any new or updated data.
+ * - **Unified Message Flow**: The `sendMessage` action uses a "queue-first"
+ *   approach. All outgoing messages are first written to the SQLite queue,
+ *   providing an optimistic UI update. If the app is online, the queue is
+ *   processed immediately; if offline, it waits for reconnection.
+ * - **Real-time Subscriptions**: Manages Firestore listeners for both the list
+ *   of conversations and the messages within the currently active conversation.
+ * - **Memory Management**: Implements a "windowed" approach to messages, only
+ *   keeping a certain number of recent messages in memory to prevent bloat.
+ *
+ * @see connectionStore for how this store's sync and queue processing logic is
+ *      triggered by network state changes.
+ * @see ConversationScreen and ConversationsList for the primary UI components
+ *      that interact with this store.
+ */
+
+/**
+ * @fileoverview Messages Store - Manages messages, conversations, and real-time subscriptions
+ *
+ * This store handles:
+ * - Conversation list management with real-time subscriptions
+ * - Message list management per conversation with SQLite caching
+ * - Message sending with offline queue support
+ * - Optimistic updates for instant UI feedback
+ * - Read receipts and typing indicators
+ * - Background message synchronization
+ * - Queue processing for offline messages
+ *
+ * Key features:
+ * - SQLite-first loading for instant display
+ * - Firestore real-time subscriptions for updates
+ * - Optimistic UI updates with fallback
+ * - Automatic queue processing when online
+ * - Pagination support for loading older messages
+ * - Windowed message storage (10k messages per conversation)
+ */
+
 import conversationService from "@/services/conversationService";
 import messageService from "@/services/messageService";
 import sqliteService from "@/services/sqliteService";
@@ -13,16 +62,32 @@ import * as Crypto from "expo-crypto";
 import { Unsubscribe } from "firebase/firestore";
 import { create } from "zustand";
 
-// Constants
-const MAX_MESSAGES_IN_MEMORY = 10000; // Window size per conversation
+/**
+ * Maximum number of messages to keep in memory per conversation
+ * Older messages are removed to prevent memory bloat
+ */
+const MAX_MESSAGES_IN_MEMORY = 10000;
 
-// Mutex to prevent concurrent queue processing
+/**
+ * Mutex to prevent concurrent queue processing
+ * Ensures messages are sent in order and prevents race conditions
+ */
 let queueProcessingMutex = false;
 
-// Connection status getter - will be set by connection store
+/**
+ * Connection status getter function
+ * Set by connection store to allow checking online status
+ */
 let getConnectionStatus: (() => { isOnline: boolean }) | null = null;
 
-// Function to register connection status getter
+/**
+ * Register a function to get connection status
+ *
+ * Allows the messages store to check online status for decision-making
+ * (e.g., whether to queue messages or send immediately)
+ *
+ * @param getter - Function that returns connection status
+ */
 export const setConnectionStatusGetter = (
   getter: () => { isOnline: boolean }
 ) => {
@@ -101,6 +166,17 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  /**
+   * Subscribes to real-time updates for the user's conversations.
+   *
+   * This sets up a Firestore listener that keeps the `conversations` array in
+   * the store synchronized with the backend. It also includes logic to show
+   * toast notifications for new messages in conversations that are not currently
+   * active, and it pre-fetches and caches the profiles of all conversation
+   * participants for better performance.
+   *
+   * @param userId The ID of the current user.
+   */
   subscribeToConversations(userId: string) {
     const { subscriptions } = get();
 
@@ -249,6 +325,15 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     });
   },
 
+  /**
+   * Sets the currently active conversation and manages message subscriptions.
+   *
+   * When a conversation is selected, this action clears any existing message
+   * and typing subscriptions and prepares the store for loading the new
+   * conversation's messages.
+   *
+   * @param conversationId The ID of the conversation to set as current, or `null` to clear.
+   */
   setCurrentConversation(conversationId: string | null) {
     set({ currentConversationId: conversationId });
 
@@ -270,6 +355,13 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     });
   },
 
+  /**
+   * Loads the messages for a conversation, using a "SQLite-first" strategy.
+   *
+   * @param conversationId The ID of the conversation to load messages for.
+   * @returns A promise that resolves when the messages are loaded.
+   * @throws An error if the loading fails.
+   */
   async loadMessages(conversationId: string) {
     set({ loading: true });
     try {
@@ -332,6 +424,18 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  /**
+   * Subscribes to real-time message and typing status updates for a conversation.
+   *
+   * This is a key method for the real-time chat experience. It sets up
+   * Firestore listeners for new messages and typing indicators. The message
+   * listener is highly optimized: it batch-saves incoming messages to SQLite,
+   * efficiently merges new messages and read receipt updates into the Zustand
+   * state, and automatically marks new messages as read if the user is
+   * currently viewing the conversation.
+   *
+   * @param conversationId The ID of the conversation to subscribe to.
+   */
   subscribeToMessages(conversationId: string) {
     const startTime = Date.now();
     logger.info(
@@ -522,6 +626,23 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     );
   },
 
+  /**
+   * Sends a message using a unified, offline-first flow.
+   *
+   * This action implements a "queue-first" strategy:
+   * 1. A unique UUID is generated for the message.
+   * 2. The message is immediately saved to the SQLite `queued_messages` table.
+   * 3. An optimistic update is applied to the UI, showing the message in a "sending" or "queued" state.
+   * 4. If the app is online, the queue processing is triggered immediately.
+   * 5. If offline, the message remains in the queue to be sent upon reconnection.
+   *
+   * This approach ensures a fast, responsive UI and reliable message delivery.
+   *
+   * @param conversationId The ID of the conversation to send the message to.
+   * @param text The content of the message.
+   * @returns A promise that resolves when the message has been queued and the UI has been updated.
+   * @throws An error if the user is not authenticated or if the queuing operation fails.
+   */
   async sendMessage(conversationId: string, text: string) {
     const { user } = useAuthStore.getState();
     if (!user) throw new Error("User not authenticated");
@@ -539,7 +660,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     });
 
     try {
-      // Always queue first (unified flow)
+      // Always queue first (unified flow - works online and offline)
       if (sqliteService.isInitialized()) {
         await sqliteService.queueMessage(
           messageId,
@@ -549,7 +670,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         );
       }
 
-      // Optimistic update - add message to local state immediately
+      // Optimistic update - add message to local state immediately for instant UI feedback
       const tempMessage: Message = {
         id: messageId,
         conversationId,
@@ -572,7 +693,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         },
       }));
 
-      // If online: process queue immediately
+      // If online: process queue immediately to send to Firestore
       if (isOnline) {
         logger.debug("messages", "Processing queue immediately (online)", {
           messageId,
@@ -587,7 +708,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       } else {
         logger.info("messages", "Message queued (offline)", { messageId });
 
-        // Update queue count in connection store
+        // Update queue count in connection store to show user status
         const { updateQueueCounts } = useConnectionStore.getState();
         const currentStats = useConnectionStore.getState();
         updateQueueCounts(
@@ -638,6 +759,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  /**
+   * Retries sending a message that has previously failed.
+   *
+   * @param conversationId The ID of the conversation the message belongs to.
+   * @param messageId The ID of the failed message.
+   * @returns A promise that resolves when the retry attempt is complete.
+   * @throws An error if the message is not in a failed state or if the retry fails.
+   */
   async retryMessage(conversationId: string, messageId: string) {
     const { user } = useAuthStore.getState();
     if (!user) throw new Error("User not authenticated");
@@ -701,6 +830,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  /**
+   * Marks all messages in a conversation as read by the current user.
+   *
+   * @param conversationId The ID of the conversation.
+   * @param userId The ID of the current user.
+   * @returns A promise that resolves when the operation is complete.
+   * @throws An error if the operation fails.
+   */
   async markAsRead(conversationId: string, userId: string) {
     try {
       await messageService.markConversationAsRead(conversationId, userId);
@@ -732,6 +869,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  /**
+   * Updates the read receipts for a specific message in the local state.
+   *
+   * @param conversationId The ID of the conversation.
+   * @param messageId The ID of the message to update.
+   * @param readBy The new `readBy` map for the message.
+   * @private
+   */
   async updateMessageReadReceipts(
     conversationId: string,
     messageId: string,
@@ -748,6 +893,13 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }));
   },
 
+  /**
+   * Updates the current user's typing status in a conversation.
+   *
+   * @param conversationId The ID of the conversation.
+   * @param isTyping A boolean indicating whether the user is typing.
+   * @returns A promise that resolves when the typing status is updated in Firestore.
+   */
   async updateTyping(conversationId: string, isTyping: boolean) {
     const { user } = useAuthStore.getState();
     if (!user) return;
@@ -765,6 +917,13 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  /**
+   * Creates a new direct conversation with another user, or opens it if it already exists.
+   *
+   * @param otherUserId The ID of the other user in the conversation.
+   * @returns A promise that resolves to the ID of the direct conversation.
+   * @throws An error if the current user is not authenticated or if the operation fails.
+   */
   async createOrOpenDirectConversation(otherUserId: string): Promise<string> {
     const { user } = useAuthStore.getState();
     if (!user) throw new Error("User not authenticated");
@@ -788,6 +947,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  /**
+   * Creates a new group conversation.
+   *
+   * @param participantIds An array of user IDs to include in the group.
+   * @param name The name of the group.
+   * @returns A promise that resolves to the ID of the new group conversation.
+   * @throws An error if the current user is not authenticated or if the operation fails.
+   */
   async createGroupConversation(
     participantIds: string[],
     name: string
@@ -815,8 +982,20 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  /**
+   * Processes the offline message queue, sending any pending messages to Firestore.
+   *
+   * This is a critical function for the app's offline-first architecture. It is
+   * designed to be robust, with features such as:
+   * - A mutex to prevent concurrent processing.
+   * - Pre-checks for network connectivity and user authentication.
+   * - Sequential processing to maintain message order.
+   * - Error handling and retry logic for individual messages.
+   *
+   * @returns A promise that resolves when the queue processing is complete.
+   */
   async processQueue() {
-    // Prevent concurrent queue processing
+    // Prevent concurrent queue processing (mutex pattern)
     if (queueProcessingMutex) {
       logger.debug(
         "messages",
@@ -843,6 +1022,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     const isOnline = getConnectionStatus?.()?.isOnline ?? true;
     const { firestoreConnected } = useConnectionStore.getState();
 
+    // Validate prerequisites before processing
     if (!isOnline) {
       logger.debug("messages", "Cannot process queue: Currently offline", {
         timestamp: Date.now(),
@@ -872,7 +1052,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       return;
     }
 
-    // Set mutex immediately
+    // Set mutex immediately to prevent race conditions
     queueProcessingMutex = true;
 
     try {
@@ -1117,6 +1297,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  /**
+   * Fetches and caches any messages that were missed while the app was offline or in the background.
+   *
+   * This method iterates through all conversations, checks the last sync timestamp
+   * for each, and fetches any new messages from Firestore.
+   *
+   * @returns A promise that resolves when the sync is complete.
+   */
   async syncMissedMessages() {
     const { conversations } = get();
 
@@ -1190,6 +1378,15 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  /**
+   * Loads the messages for a conversation into memory from the SQLite cache.
+   *
+   * This is the first step when opening a conversation. It provides an instant
+   * view of the message history while a real-time subscription is being set up.
+   *
+   * @param conversationId The ID of the conversation to load.
+   * @returns A promise that resolves when the messages are loaded into the store's state.
+   */
   async loadConversationMessages(conversationId: string) {
     const startTime = Date.now();
     logger.info(
@@ -1253,6 +1450,12 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     logger.info("messages", `✅ Conversation load completed in ${totalTime}ms`);
   },
 
+  /**
+   * Loads older messages for a conversation from the SQLite cache for pagination.
+   *
+   * @param conversationId The ID of the conversation.
+   * @returns A promise that resolves when the older messages are loaded and added to the state.
+   */
   async loadOlderMessages(conversationId: string) {
     const state = get();
     const paginationState = state.paginationState[conversationId];
@@ -1332,6 +1535,15 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  /**
+   * Performs a background sync of new messages for a single conversation.
+   *
+   * This is typically triggered when the conversation list is updated and shows
+   * an unread count for a conversation that is not currently active.
+   *
+   * @param conversationId The ID of the conversation to sync.
+   * @returns A promise that resolves when the sync is complete.
+   */
   async syncNewMessagesForConversation(conversationId: string) {
     try {
       // Don't sync if not online
@@ -1372,6 +1584,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
+  /**
+   * Unloads a conversation's messages from memory and unsubscribes from its real-time updates.
+   *
+   * This is a crucial memory management function that is called when the user
+   * navigates away from a conversation screen.
+   *
+   * @param conversationId The ID of the conversation to unload.
+   */
   unloadConversationMessages(conversationId: string) {
     const { subscriptions } = get();
 
@@ -1395,6 +1615,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     });
   },
 
+  /**
+   * Unsubscribes from all active Firestore listeners.
+   */
   clearSubscriptions() {
     const { subscriptions } = get();
 
@@ -1413,6 +1636,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     });
   },
 
+  /**
+   * Clears all data from the store, including conversations, messages, and subscriptions.
+   *
+   * This is called during the logout process to ensure a clean state for the next user.
+   */
   clearAllData() {
     // Clear all subscriptions
     get().clearSubscriptions();
@@ -1428,6 +1656,12 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     });
   },
 
+  /**
+   * Calculates the total number of unread messages for the current user across all conversations.
+   *
+   * @param userId The ID of the current user.
+   * @returns The total unread message count.
+   */
   getTotalUnreadCount(userId: string) {
     const { conversations } = get();
     return conversations.reduce((total, conversation) => {
@@ -1437,7 +1671,16 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 }));
 
-// Setup function to register callbacks with connection store
+/**
+ * Sets up the necessary callbacks between the messages store and the connection store.
+ *
+ * This function registers the `processQueue` and `syncMissedMessages` actions
+ * as network event callbacks, so they are automatically executed when the
+ * application comes back online.
+ *
+ * @param registerCallback The `registerNetworkCallback` function from the connection store.
+ * @returns An `unsubscribe` function to remove the callbacks.
+ */
 export const setupMessagesStoreCallbacks = (
   registerCallback: (callback: () => Promise<void>) => () => void
 ) => {

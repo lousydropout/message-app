@@ -1,3 +1,26 @@
+/**
+ * @fileoverview Diagnostics Screen - A comprehensive suite of tools for debugging and testing.
+ *
+ * This screen is an essential internal tool for developers, providing a centralized
+ * interface for monitoring the application's health and testing its core
+ * functionalities. It is not intended for end-users but is included in development
+ * and staging builds to facilitate troubleshooting.
+ *
+ * Key Features:
+ * - **System Log Viewer**: Displays real-time, color-coded logs from the
+ *   `loggerStore`, with support for filtering by log level, expanding metadata,
+ *   and copying logs to the clipboard.
+ * - **Connection Status**: Provides a live snapshot of the application's
+ *   network state, including sync status, message queue counts, and any recent
+ *   errors, sourced from the `connectionStore`.
+ * - **API Tests**: Includes buttons to trigger test requests to the backend
+ *   services, such as authentication checks and AI translations, helping to
+ *   verify the integrity of the client-server communication.
+ *
+ * @see useLoggerStore for the log management and persistence.
+ * @see useConnectionStore for the network and sync state.
+ */
+
 import {
   connectionHelpers,
   useConnectionStore,
@@ -18,6 +41,12 @@ import {
   View,
 } from "react-native";
 
+/**
+ * Diagnostics screen component
+ *
+ * Provides debugging tools and diagnostic information for
+ * developers and troubleshooting.
+ */
 export default function DiagnosticsScreen() {
   // API Test Modal state
   const [apiModalVisible, setApiModalVisible] = useState(false);

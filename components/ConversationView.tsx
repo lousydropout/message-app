@@ -1,3 +1,52 @@
+/**
+ * @fileoverview ConversationView Component - The user interface for a single conversation.
+ *
+ * This component is the heart of the chat experience, responsible for rendering
+ * the message list, handling user input, and displaying real-time updates such
+ * as new messages and typing indicators. It is highly optimized for performance,
+ * using `@shopify/flash-list` for the message list and employing a "SQLite-first"
+ * loading strategy to display messages instantly.
+ *
+ * Key Features:
+ * - **Message Display**: Renders a list of messages using the `MessageBubble`
+ *   component, with support for displaying sender names in group chats.
+ * - **User Input**: Provides a text input field for composing messages and a
+ *   send button, with debounced typing indicators.
+ * - **Real-time Updates**: Subscribes to the `messagesStore` to receive and
+ *   display new messages and typing statuses as they happen.
+ * - **Lifecycle Management**: Manages the loading and unloading of conversation
+ *   data, including subscribing to and unsubscribing from real-time updates,
+ *   to ensure efficient resource usage.
+ * - **User Experience**: Includes features like automatic scrolling to new
+ *   messages, a "new messages" indicator, and the ability to retry sending
+ *   failed messages.
+ *
+ * @see messagesStore for the state and actions that power this component.
+ * @see ConversationScreen where this component is used.
+ * @see MessageBubble for the component that renders individual messages.
+ */
+
+/**
+ * @fileoverview ConversationView Component - Main conversation interface
+ *
+ * This component provides:
+ * - Message list display with FlashList for performance
+ * - Message input and sending
+ * - Typing indicators
+ * - Participant profiles management
+ * - Mark as read functionality
+ * - Retry failed messages
+ * - Auto-scroll to bottom
+ * - Participants modal
+ *
+ * Features:
+ * - Efficient rendering with FlashList
+ * - Real-time message updates
+ * - Optimistic message sending
+ * - Typing indicator with debouncing
+ * - Auto-scroll on new messages
+ */
+
 import { MessageBubble } from "@/components/MessageBubble";
 import { TypingIndicator } from "@/components/TypingIndicator";
 import userService from "@/services/userService";
@@ -24,8 +73,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+/**
+ * Props for ConversationView component
+ */
 interface ConversationViewProps {
+  /** ID of the conversation to display */
   conversationId: string;
+  /** Optional conversation data */
   conversation?: Conversation;
 }
 

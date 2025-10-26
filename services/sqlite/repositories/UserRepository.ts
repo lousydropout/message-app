@@ -4,6 +4,20 @@ import { User } from "@/types/User";
 import { Timestamp } from "firebase/firestore";
 
 /**
+ * @fileoverview User Repository - Manages the local cache of user profiles in SQLite.
+ *
+ * This repository is responsible for storing and retrieving user profile data
+ * in the local SQLite database. By caching user profiles, the application can
+ * reduce its reliance on Firestore for frequently accessed user information,
+ * leading to faster UI rendering and lower costs. The repository handles the
+ * serialization and deserialization of complex data types to and from the
+ * format required by SQLite.
+ *
+ * @see usersStore for how user data is managed in the application's state.
+ * @see userService for fetching user profiles from Firestore.
+ */
+
+/**
  * User Repository - handles user profile caching operations
  *
  * This repository provides methods for:
@@ -15,7 +29,14 @@ export class UserRepository {
   constructor(private db: SQLiteDatabase) {}
 
   /**
-   * Save user profile to local cache
+   * Saves a user's profile to the local SQLite cache.
+   *
+   * This method performs an "upsert" (INSERT OR REPLACE) to ensure that the
+   * local cache always has the most up-to-date user profile information.
+   *
+   * @param user The `User` object to be cached.
+   * @returns A promise that resolves when the profile is successfully saved.
+   * @throws An error if the database operation fails.
    */
   async saveUserProfile(user: User): Promise<void> {
     const db = this.db.getDb();
@@ -52,7 +73,11 @@ export class UserRepository {
   }
 
   /**
-   * Get user profile from local cache
+   * Retrieves a single user profile from the local cache by their ID.
+   *
+   * @param userId The ID of the user to retrieve.
+   * @returns A promise that resolves to the `User` object, or `null` if the user is not in the cache.
+   * @throws An error if the database query fails.
    */
   async getUserProfile(userId: string): Promise<User | null> {
     const db = this.db.getDb();
@@ -85,7 +110,14 @@ export class UserRepository {
   }
 
   /**
-   * Get multiple user profiles from local cache
+   * Retrieves multiple user profiles from the local cache in a single batch.
+   *
+   * This is more efficient than fetching profiles one by one, as it reduces
+   * the number of database queries.
+   *
+   * @param userIds An array of user IDs to retrieve.
+   * @returns A promise that resolves to an array of `User` objects.
+   * @throws An error if the database query fails.
    */
   async getUserProfiles(userIds: string[]): Promise<User[]> {
     const db = this.db.getDb();

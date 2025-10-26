@@ -1,3 +1,21 @@
+/**
+ * @fileoverview UserSearch Component - Enables user discovery and friend requests.
+ *
+ * This component provides a crucial social feature of the application, allowing
+ * users to search for others by their display name or email address. The search
+ * is debounced to prevent excessive API calls while the user is typing.
+ *
+ * For each user in the search results, the component checks the current
+ * relationship status (e.g., already friends, request pending) and displays a
+ * context-aware action button. This allows the current user to send a friend
+ * request, or it indicates that an interaction is already in progress. The
+ * component manages its own loading and state for these actions, providing a
+ * seamless user experience for social discovery.
+ *
+ * @see ContactsScreen for the primary UI where this component is used.
+ * @see useContactsStore for the actions related to searching and sending requests.
+ */
+
 import { useAuthStore } from "@/stores/authStore";
 import { useContactsStore } from "@/stores/contactsStore";
 import { User } from "@/types/User";
@@ -13,10 +31,20 @@ import {
   View,
 } from "react-native";
 
+/**
+ * Props for UserSearch component
+ */
 interface UserSearchProps {
+  /** Optional callback when a user is selected */
   onUserSelect?: (user: User) => void;
 }
 
+/**
+ * User search component
+ *
+ * Allows users to search for other users and send friend requests.
+ * Displays search results with appropriate action buttons based on friendship status.
+ */
 export default function UserSearch({ onUserSelect }: UserSearchProps) {
   const { user } = useAuthStore();
   const {

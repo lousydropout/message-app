@@ -1,9 +1,36 @@
+/**
+ * @fileoverview Logger Store (Zustand) - A centralized logging system for the application.
+ *
+ * This store provides a robust, structured logging solution that replaces the
+ * need for scattered `console.log` statements. It supports different log levels
+ * (debug, info, warning, error) and categories, allowing for organized and
+ * filterable logs.
+ *
+ * Logs are persisted in two ways:
+ * 1. **In-memory**: A limited number of recent logs are kept in the Zustand state
+ *    for immediate access and display in debugging UIs.
+ * 2. **SQLite**: All logs are saved to a local SQLite database, providing a
+ *    persistent and comprehensive log history that can be reviewed later.
+ *
+ * A global `logger` object is also exported, providing a convenient, non-hook-based
+ * way to access the logging functions from anywhere in the application, including
+ * services and other non-React modules.
+ *
+ * @see DiagnosticsScreen for the UI that displays logs from this store.
+ * @see sqliteService for the underlying database operations.
+ */
+
 import sqliteService from "@/services/sqliteService";
 import { Log, LogLevel } from "@/types/Log";
 import { create } from "zustand";
 
+/**
+ * Logger store interface
+ */
 interface LoggerStore {
+  /** Array of logs in memory */
   logs: Log[];
+  /** Maximum number of logs to keep in memory */
   maxLogsInMemory: number;
 
   // Actions
@@ -103,6 +130,13 @@ export const useLoggerStore = create<LoggerStore>((set, get) => ({
     get().log("error", category, message, metadata);
   },
 
+  /**
+   * Loads logs from the SQLite database into the in-memory store.
+   *
+   * @param limit The maximum number of logs to load.
+   * @param minLevel The minimum log level to include.
+   * @returns A promise that resolves when the logs are loaded.
+   */
   loadLogs: async (limit: number = 100, minLevel?: LogLevel) => {
     if (!sqliteService.isInitialized()) {
       console.log("SQLite not initialized, skipping log load");
@@ -117,6 +151,11 @@ export const useLoggerStore = create<LoggerStore>((set, get) => ({
     }
   },
 
+  /**
+   * Clears all logs from both the in-memory store and the SQLite database.
+   *
+   * @returns A promise that resolves when all logs are cleared.
+   */
   clearLogs: async () => {
     if (!sqliteService.isInitialized()) {
       console.log("SQLite not initialized, skipping log clear");
@@ -132,7 +171,11 @@ export const useLoggerStore = create<LoggerStore>((set, get) => ({
   },
 }));
 
-// Helper function to get logger instance
+/**
+ * A convenience logger object that provides direct access to the logging methods
+ * of the `useLoggerStore` without needing to be in a React component context.
+ * This should be the primary way that logging is performed throughout the application.
+ */
 export const logger = {
   debug: (category: string, message: string, metadata?: any) => {
     useLoggerStore.getState().debug(category, message, metadata);

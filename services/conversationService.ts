@@ -1,3 +1,40 @@
+/**
+ * @fileoverview Conversation Service - Manages conversations in Firestore
+ *
+ * This service is the primary interface for all conversation-related operations
+ * in Firestore. It encapsulates the logic for creating, retrieving, updating,
+ * and subscribing to conversations, abstracting the underlying Firestore queries
+ * and data manipulation from the rest of the application.
+ *
+ * @see /docs/firestore-data-model.md for the data schema.
+ */
+
+/**
+ * @fileoverview Conversation Service - Manages conversations in Firestore
+ *
+ * This service handles:
+ * - Creating conversations (direct and group)
+ * - Fetching conversations
+ * - Finding or creating direct conversations
+ * - Updating conversation metadata
+ * - Real-time conversation subscriptions
+ * - Firestore connection state tracking
+ *
+ * Key features:
+ * - Subcollection pattern for messages (conversations/{id}/messages)
+ * - Atomic unread count updates
+ * - Client-side sorting (avoiding index requirements)
+ * - Firestore connection monitoring for offline handling
+ *
+ * @notes
+ * The current implementation uses client-side sorting for conversations to avoid
+ * the need for a composite index on `participants` and `updatedAt`. This is a
+ * temporary measure to simplify development and will be replaced with a proper
+ * index as the application scales. The `subscribeToConversations` method also
+ * handles Firestore connection state updates, which is crucial for the app's
+ * offline functionality.
+ */
+
 import { db } from "@/config/firebase";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { logger } from "@/stores/loggerStore";
@@ -20,6 +57,18 @@ import {
 class ConversationService {
   private conversationsRef = collection(db, "conversations");
 
+  /**
+   * Create a new conversation
+   *
+   * Creates a conversation document in Firestore with participants,
+   * type, and optional name (for group chats).
+   *
+   * @param participants - Array of user IDs participating in the conversation
+   * @param type - Type of conversation: "direct" or "group"
+   * @param name - Optional name for group conversations
+   * @returns Conversation ID
+   * @throws Error if creation fails
+   */
   async createConversation(
     participants: string[],
     type: "direct" | "group",
@@ -43,6 +92,13 @@ class ConversationService {
     }
   }
 
+  /**
+   * Retrieves a single conversation by its ID.
+   *
+   * @param conversationId - The ID of the conversation to fetch.
+   * @returns A promise that resolves to the Conversation object or null if not found.
+   * @throws Throws an error if the fetch operation fails.
+   */
   async getConversation(conversationId: string): Promise<Conversation | null> {
     const methodStartTime = Date.now();
     logger.info(
@@ -110,6 +166,20 @@ class ConversationService {
     }
   }
 
+  /**
+   * Retrieves all conversations for a specific user.
+   *
+   * Queries for conversations where the user's ID is in the 'participants' array.
+   * Currently sorts conversations on the client-side by `updatedAt` timestamp
+   * to avoid requiring a composite Firestore index during early development.
+   *
+   * @param userId - The ID of the user whose conversations are to be fetched.
+   * @returns A promise that resolves to an array of Conversation objects.
+   * @throws Throws an error if the query fails.
+   * @note This method currently sorts conversations on the client-side to avoid
+   * the need for a composite Firestore index on `participants` and `updatedAt`.
+   * This is a temporary measure for performance and will be updated later.
+   */
   async getUserConversations(userId: string): Promise<Conversation[]> {
     try {
       // Temporary: Use simple query without orderBy to avoid index requirement
@@ -142,6 +212,21 @@ class ConversationService {
     }
   }
 
+  /**
+   * Finds an existing direct conversation between two users or creates a new one.
+   *
+   * This function prevents duplicate direct conversations. It queries for a 'direct'
+   * conversation that includes both user IDs as participants. If none is found,
+   * it creates a new one.
+   *
+   * @param userId1 - The ID of the first user.
+   * @param userId2 - The ID of the second user.
+   * @returns A promise that resolves to the conversation ID.
+   * @throws Throws an error if the operation fails.
+   * @note The query for existing conversations is designed to be efficient by
+   * filtering on one user ID and then checking the participants array in-memory.
+   * This is more scalable than querying for both user IDs in the array.
+   */
   async getOrCreateDirectConversation(
     userId1: string,
     userId2: string
@@ -178,6 +263,14 @@ class ConversationService {
     }
   }
 
+  /**
+   * Updates a conversation document with the provided data.
+   *
+   * @param conversationId - The ID of the conversation to update.
+   * @param data - An object containing the fields to update.
+   * @returns A promise that resolves when the update is complete.
+   * @throws Throws an error if the update fails.
+   */
   async updateConversation(conversationId: string, data: any): Promise<void> {
     try {
       const conversationRef = doc(this.conversationsRef, conversationId);
@@ -188,6 +281,17 @@ class ConversationService {
     }
   }
 
+  /**
+   * Updates the `lastMessage` and `updatedAt` fields of a conversation.
+   *
+   * This is typically called after a new message is sent to keep conversation
+   * previews up-to-date.
+   *
+   * @param conversationId - The ID of the conversation to update.
+   * @param message - The latest message object.
+   * @returns A promise that resolves when the update is complete.
+   * @throws Throws an error if the update fails.
+   */
   async updateConversationLastMessage(
     conversationId: string,
     message: Message
@@ -213,6 +317,21 @@ class ConversationService {
     }
   }
 
+  /**
+   * Subscribes to real-time updates for a user's conversations.
+   *
+   * Sets up a Firestore listener that triggers the callback with an updated
+   * list of conversations whenever a change occurs. It also monitors the
+   * connection state with Firestore and updates the `connectionStore`.
+   *
+   * @param userId - The ID of the user to get conversations for.
+   * @param callback - The function to call with the updated conversations array.
+   * @returns An `Unsubscribe` function to stop the listener.
+   * @note This subscription is essential for the real-time functionality of the
+   * app. The error handling logic is designed to detect offline scenarios and
+   * update the connection state accordingly, allowing the app to switch to
+   * offline mode gracefully.
+   */
   subscribeToConversations(
     userId: string,
     callback: (conversations: Conversation[]) => void
@@ -290,6 +409,15 @@ class ConversationService {
     );
   }
 
+  /**
+   * Subscribes to real-time updates for a single conversation.
+   *
+   * @param conversationId - The ID of the conversation to subscribe to.
+   * @param callback - The function to call with the updated conversation data, or null if it's deleted.
+   * @returns An `Unsubscribe` function to stop the listener.
+   * @note This provides a real-time view of a single conversation's metadata,
+   * which is useful for displaying details like the group name or participant list.
+   */
   subscribeToConversation(
     conversationId: string,
     callback: (conversation: Conversation | null) => void

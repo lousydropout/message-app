@@ -1,10 +1,29 @@
-import userService from "@/services/userService";
-import { User } from "@/types/User";
-import { Unsubscribe } from "firebase/firestore";
-import { create } from "zustand";
+/**
+ * @fileoverview Users Store - Manages user profile subscriptions
+ *
+ * This store handles:
+ * - Real-time user profile subscriptions
+ * - Tracking subscribed user IDs
+ * - Managing Firestore subscriptions lifecycle
+ * - Preventing duplicate subscriptions
+ *
+ * The store maintains a set of subscribed user IDs and manages the
+ * Firestore subscriptions efficiently, delegating to userService for
+ * the actual Firestore operations and SQLite caching.
+ */
 
+import { create } from "zustand";
+import { Unsubscribe } from "firebase/firestore";
+import { User } from "@/types/User";
+import userService from "@/services/userService";
+
+/**
+ * Users store state interface
+ */
 export interface UsersState {
+  /** Set of user IDs currently subscribed to */
   subscribedUserIds: Set<string>;
+  /** Array of unsubscribe functions for active subscriptions */
   subscriptions: Unsubscribe[];
 
   // Actions
@@ -17,6 +36,14 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   subscribedUserIds: new Set<string>(),
   subscriptions: [],
 
+  /**
+   * Subscribes to real-time updates for a given list of user IDs.
+   *
+   * This method is idempotent; it checks for existing subscriptions and only
+   * creates new ones for users that are not already being tracked.
+   *
+   * @param userIds An array of user IDs to subscribe to.
+   */
   subscribeToUsers(userIds: string[]) {
     const { subscribedUserIds, subscriptions } = get();
 
@@ -37,7 +64,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         // The userService.subscribeToUsers already handles SQLite cache updates
         // We could add additional logic here if needed (e.g., updating UI state)
         console.log(`Updated ${users.length} user profiles in real-time`);
-      }
+      },
     );
 
     // Add the new subscription to our list
@@ -49,8 +76,19 @@ export const useUsersStore = create<UsersState>((set, get) => ({
     });
   },
 
+  /**
+   * Removes a list of user IDs from the tracking set.
+   *
+   * @note This does not immediately terminate the Firestore listener, as the
+   * subscriptions are batched. Instead, it removes the user IDs from the
+   * `subscribedUserIds` set, effectively "opting out" of future updates for
+   * those users within the existing subscription. The actual listener is only
+   * terminated when `clearAllSubscriptions` is called.
+   *
+   * @param userIds An array of user IDs to unsubscribe from.
+   */
   unsubscribeFromUsers(userIds: string[]) {
-    const { subscribedUserIds, subscriptions } = get();
+    const { subscribedUserIds } = get();
 
     // Remove user IDs from our tracking set
     const updatedSubscribedIds = new Set(subscribedUserIds);
@@ -66,6 +104,14 @@ export const useUsersStore = create<UsersState>((set, get) => ({
     });
   },
 
+  /**
+   * Terminates all active Firestore subscriptions and clears the store's state.
+   *
+   * This is a critical cleanup operation that should be called when the user
+   * logs out or when the component managing the subscriptions is unmounted. It
+   * iterates through all active subscriptions and calls their `unsubscribe`
+   * function to prevent memory leaks and unnecessary Firestore reads.
+   */
   clearAllSubscriptions() {
     const { subscriptions } = get();
 

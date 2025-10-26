@@ -1,3 +1,44 @@
+/**
+ * @fileoverview User Service - Manages user profile data in Firestore and the local cache.
+ *
+ * This service provides a comprehensive interface for all operations related to
+ * user profiles. It handles the creation, updating, and retrieval of user data,
+ * as well as more specialized features like user search, blocking, and real-time
+ * presence tracking. It employs a "SQLite-first" caching strategy to ensure a
+ * fast and responsive user experience, falling back to Firestore only when
+ * necessary.
+ *
+ * Key Features:
+ * - **CRUD Operations**: Manages the lifecycle of user profile documents in Firestore.
+ * - **SQLite Caching**: Caches user profiles locally for offline access and performance.
+ * - **Batched Subscriptions**: Efficiently subscribes to real-time updates for multiple
+ *   users by batching queries to respect Firestore's limitations.
+ * - **Presence Management**: Includes logic to determine and format a user's online
+ *   status based on their heartbeat.
+ *
+ * @see usersStore for how this service is used to manage user data in the app's state.
+ * @see presenceService for the underlying heartbeat mechanism.
+ */
+
+/**
+ * @fileoverview User Service - Manages user profiles in Firestore
+ *
+ * This service handles:
+ * - User profile CRUD operations
+ * - Language preferences and AI settings
+ * - User blocking/unblocking
+ * - User search functionality
+ * - Online status detection and formatting
+ * - Real-time user subscriptions (batched for efficiency)
+ * - SQLite caching for offline access
+ *
+ * Key features:
+ * - Singleton pattern for consistency
+ * - SQLite-first loading for instant display
+ * - Batch subscriptions (Firestore 30-item limit handling)
+ * - Online status based on heartbeat (40-second timeout)
+ */
+
 import { db } from "@/config/firebase";
 import sqliteService from "@/services/sqliteService";
 import { SupportedLanguageCode, User } from "@/types/User";
@@ -19,6 +60,9 @@ import {
 export class UserService {
   private static instance: UserService;
 
+  /**
+   * Get singleton instance of UserService
+   */
   static getInstance(): UserService {
     if (!UserService.instance) {
       UserService.instance = new UserService();
@@ -27,7 +71,15 @@ export class UserService {
   }
 
   /**
-   * Create a new user profile in Firestore
+   * Creates a new user profile document in Firestore.
+   *
+   * This is typically called after a new user signs up. It initializes the
+   * user's profile with default settings and timestamps.
+   *
+   * @param userId The ID of the user (should match their Firebase Auth UID).
+   * @param profileData Partial data for the new profile, usually including email and displayName.
+   * @returns A promise that resolves when the profile is successfully created.
+   * @throws An error if the Firestore operation fails.
    */
   async createUserProfile(
     userId: string,
@@ -68,7 +120,12 @@ export class UserService {
   }
 
   /**
-   * Update user profile in Firestore
+   * Updates an existing user profile in Firestore.
+   *
+   * @param userId The ID of the user whose profile is to be updated.
+   * @param updates An object containing the fields to update.
+   * @returns A promise that resolves when the profile is successfully updated.
+   * @throws An error if the Firestore operation fails.
    */
   async updateUserProfile(
     userId: string,
@@ -89,11 +146,21 @@ export class UserService {
   }
 
   /**
-   * Get user profile from Firestore
+   * Retrieves a user profile, prioritizing the local cache for performance.
+   *
+   * This method implements a "SQLite-first" approach. It first attempts to
+   * load the user profile from the local SQLite cache for an instant response.
+   * If the profile is not found in the cache, it falls back to fetching it
+   * from Firestore and then saves the fetched profile to the local cache for
+   * future requests.
+   *
+   * @param userId The ID of the user to retrieve.
+   * @returns A promise that resolves to the `User` object, or `null` if not found.
+   * @throws An error if the retrieval operation fails.
    */
   async getUserProfile(userId: string): Promise<User | null> {
     try {
-      // Check local cache first
+      // Check local cache first for instant loading
       const localProfile = await sqliteService.getUserProfile(userId);
       if (localProfile) {
         return localProfile;
@@ -117,7 +184,12 @@ export class UserService {
   }
 
   /**
-   * Update language preferences
+   * Updates a user's language preferences.
+   *
+   * @param userId The ID of the user.
+   * @param languages An array of `SupportedLanguageCode`s.
+   * @returns A promise that resolves when the preferences are updated.
+   * @throws An error if the update fails.
    */
   async updateLanguagePreferences(
     userId: string,
@@ -132,7 +204,15 @@ export class UserService {
   }
 
   /**
-   * Update AI settings
+   * Updates a user's AI-related settings.
+   *
+   * This method fetches the current settings first to ensure that only the
+   * specified settings are changed, preserving the existing ones.
+   *
+   * @param userId The ID of the user.
+   * @param settings A partial object of AI settings to update.
+   * @returns A promise that resolves when the settings are updated.
+   * @throws An error if the user profile is not found or the update fails.
    */
   async updateAISettings(
     userId: string,
@@ -157,7 +237,12 @@ export class UserService {
   }
 
   /**
-   * Add user to blocked list
+   * Adds a user to the current user's blocked list.
+   *
+   * @param userId The ID of the user performing the block.
+   * @param blockedUserId The ID of the user to block.
+   * @returns A promise that resolves when the user is successfully blocked.
+   * @throws An error if the user profile is not found or the update fails.
    */
   async blockUser(userId: string, blockedUserId: string): Promise<void> {
     try {
@@ -178,7 +263,12 @@ export class UserService {
   }
 
   /**
-   * Remove user from blocked list
+   * Removes a user from the current user's blocked list.
+   *
+   * @param userId The ID of the user performing the unblock.
+   * @param blockedUserId The ID of the user to unblock.
+   * @returns A promise that resolves when the user is successfully unblocked.
+   * @throws An error if the user profile is not found or the update fails.
    */
   async unblockUser(userId: string, blockedUserId: string): Promise<void> {
     try {
@@ -198,7 +288,11 @@ export class UserService {
   }
 
   /**
-   * Check if user is blocked
+   * Checks if a target user is in the current user's blocked list.
+   *
+   * @param userId The ID of the user whose block list is being checked.
+   * @param targetUserId The ID of the user to check for.
+   * @returns A promise that resolves to `true` if the target user is blocked, `false` otherwise.
    */
   async isUserBlocked(userId: string, targetUserId: string): Promise<boolean> {
     try {
@@ -214,7 +308,15 @@ export class UserService {
   }
 
   /**
-   * Search users by email or display name
+   * Searches for users by their email or display name.
+   *
+   * This method performs two parallel prefix-based queries against Firestore
+   * and merges the results, removing duplicates and the current user.
+   *
+   * @param searchQuery The search term.
+   * @param currentUserId The ID of the user performing the search, to exclude them from the results.
+   * @returns A promise that resolves to an array of matching `User` objects.
+   * @throws An error if the search operation fails.
    */
   async searchUsers(
     searchQuery: string,
@@ -265,7 +367,15 @@ export class UserService {
   }
 
   /**
-   * Get multiple users by their IDs
+   * Retrieves multiple user profiles by their IDs, using the local cache where possible.
+   *
+   * This method first attempts to fetch the requested profiles from the SQLite
+   * cache. For any profiles not found in the cache, it fetches them from
+   * Firestore in a single batch query and then caches them for future use.
+   *
+   * @param userIds An array of user IDs to retrieve.
+   * @returns A promise that resolves to an array of `User` objects.
+   * @throws An error if the retrieval operation fails.
    */
   async getUsersByIds(userIds: string[]): Promise<User[]> {
     try {
@@ -308,7 +418,11 @@ export class UserService {
   }
 
   /**
-   * Get heartbeat time difference in seconds
+   * Calculates the time difference in seconds since the user's last heartbeat.
+   *
+   * @param user The `User` object.
+   * @returns The time difference in seconds, or `null` if the heartbeat is not set.
+   * @private
    */
   private getHeartbeatTimeDiff(user: User): number | null {
     if (!user.heartbeat) {
@@ -324,8 +438,13 @@ export class UserService {
   }
 
   /**
-   * Check if a user is currently online based on heartbeat
-   * Uses 40-second timeout as per presence system design
+   * Determines if a user is currently online based on their `online` flag and `heartbeat`.
+   *
+   * A user is considered online if their `online` flag is true and their last
+   * heartbeat was within the last 40 seconds.
+   *
+   * @param user The `User` object.
+   * @returns `true` if the user is online, `false` otherwise.
    */
   isUserOnline(user: User): boolean {
     if (!user.online) {
@@ -342,7 +461,12 @@ export class UserService {
   }
 
   /**
-   * Get formatted online status text for a user
+   * Generates a user-friendly string describing the user's online status.
+   *
+   * Examples: "online", "Last seen 5m ago", "Last seen 2h ago".
+   *
+   * @param user The `User` object.
+   * @returns A formatted string of the user's online status.
    */
   getOnlineStatusText(user: User): string {
     if (this.isUserOnline(user)) {
@@ -371,7 +495,11 @@ export class UserService {
   }
 
   /**
-   * Get online status with styling information
+   * Provides a full set of information for displaying a user's online status,
+   * including the text, color, and font weight.
+   *
+   * @param user The `User` object.
+   * @returns An object with styling information for the user's online status.
    */
   getOnlineStatusInfo(user: User): {
     isOnline: boolean;
@@ -391,8 +519,16 @@ export class UserService {
   }
 
   /**
-   * Subscribe to real-time updates for multiple users
-   * Handles batching for Firestore's 30-item limit on 'in' queries
+   * Subscribes to real-time updates for multiple user profiles.
+   *
+   * This method is designed to handle Firestore's limitation of 30 items in an
+   * 'in' query by automatically splitting the list of user IDs into smaller
+   * batches and creating a separate subscription for each. It also updates the
+   * local SQLite cache with any changes received from the subscriptions.
+   *
+   * @param userIds An array of user IDs to subscribe to.
+   * @param callback A function to be called with the updated array of `User` objects.
+   * @returns An `Unsubscribe` function that can be called to stop all batch subscriptions.
    */
   subscribeToUsers(
     userIds: string[],

@@ -1,3 +1,19 @@
+/**
+ * @fileoverview Toast Component - Renders animated, non-blocking notifications.
+ *
+ * This component provides a system for displaying toast notifications that appear
+ * at the top of the screen to provide timely feedback to the user without
+ * interrupting their workflow. It is designed to be controlled by a central
+ * store, which manages the queue of toasts to be displayed.
+ *
+ * The component handles the animations for sliding in and out, and it styles
+ * each toast differently based on its type (e.g., new message, friend request)
+ * to provide immediate visual context. Only the most recent toast is displayed
+ * at any given time to maintain a clean and unobtrusive user interface.
+ *
+ * @see useToastStore for the state management that controls the toasts.
+ */
+
 import { useToastStore } from "@/stores/toastStore";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef } from "react";
@@ -10,6 +26,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+/**
+ * Toast notification component
+ *
+ * Displays toast notifications with animations.
+ * Shows only the latest toast at a time.
+ */
 export default function Toast() {
   const { toasts, removeToast } = useToastStore();
   const slideAnim = useRef(new Animated.Value(-100)).current;

@@ -1,3 +1,22 @@
+/**
+ * @fileoverview Login Screen - Handles user sign-in and sign-up.
+ *
+ * This screen provides the user interface for authentication. It features a
+ * clean, modern form that can be toggled between "Sign In" and "Create Account"
+ * modes. It is responsible for collecting user credentials (email, password, and
+ * display name for sign-up) and invoking the appropriate actions from the
+ * `useAuthStore`.
+ *
+ * The screen manages its own loading state to provide feedback to the user
+ * during the authentication process. It also includes basic form validation and
+ * displays user-friendly error messages if the authentication attempt fails.
+ * Upon successful authentication, the root layout component handles the
+ * navigation to the main part of the application.
+ *
+ * @see useAuthStore for the `signIn` and `signUp` actions.
+ * @see _layout.tsx for the navigation logic that responds to auth state changes.
+ */
+
 import { useAuthStore } from "@/stores/authStore";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
@@ -14,6 +33,12 @@ import {
   View,
 } from "react-native";
 
+/**
+ * Login screen component
+ *
+ * Handles user authentication (sign in and sign up).
+ * Shows loading spinner while checking auth state.
+ */
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn, signUp, loading } = useAuthStore();

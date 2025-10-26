@@ -1,10 +1,53 @@
+/**
+ * @fileoverview Connection Store (Zustand) - Manages network and synchronization state.
+ *
+ * This store is the central authority for all connectivity-related state in the
+ * application. It monitors the device's network status using `@react-native-community/netinfo`
+ * and also tracks the connection state to Firestore. A key feature of this store
+ * is its ability to automatically trigger a data synchronization process when the
+ * device comes back online, ensuring that the local data is kept up-to-date.
+ *
+ * The store also provides a callback system (`registerNetworkCallback`) that allows
+ * other modules, particularly other stores, to register functions that will be
+ * executed when the network connection is restored. This is crucial for orchestrating
+ * the multi-step process of re-syncing data.
+ *
+ * @see messagesStore for an example of a store that uses the network callback system.
+ * @see NetworkStatusBar for a UI component that displays the state from this store.
+ */
+
+/**
+ * @fileoverview Connection Store - Manages network connectivity and sync state
+ *
+ * This store handles:
+ * - Network connectivity monitoring via NetInfo
+ * - Online/offline status tracking
+ * - Sync status and progress
+ * - Message queue management
+ * - Firestore connection state
+ * - Network event callbacks
+ * - Automatic sync when connection restored
+ *
+ * Key features:
+ * - Real-time network state monitoring
+ * - Automatic queue processing on reconnection
+ * - Sync statistics tracking
+ * - Callback system for components/stores to react to network changes
+ */
+
 import sqliteService from "@/services/sqliteService";
 import { logger } from "@/stores/loggerStore";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { create } from "zustand";
 
-// Connection status types
+/**
+ * Connection status type
+ */
 export type ConnectionStatus = "online" | "offline" | "unknown";
+
+/**
+ * Sync status type
+ */
 export type SyncStatus = "idle" | "syncing" | "synced" | "error";
 
 // Sync statistics
@@ -92,7 +135,12 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   networkEventCallbacks: new Set(),
   firestoreConnected: true, // Assume connected initially
 
-  // Initialize network monitoring
+  /**
+   * Initializes the connection store by setting up listeners for network state changes and automatically triggering a
+   * sync process when the application comes back online.
+   *
+   * @returns An `unsubscribe` function to clean up the listeners.
+   */
   initialize: () => {
     logger.info("connection", "Initializing connection store");
 
@@ -221,7 +269,11 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     };
   },
 
-  // Set online status manually
+  /**
+   * Manually sets the online status of the application.
+   *
+   * @param isOnline A boolean indicating whether the application is online.
+   */
   setOnline: (isOnline: boolean) => {
     const connectionStatus: ConnectionStatus = isOnline ? "online" : "offline";
     const previousStatus = get().connectionStatus;
@@ -247,7 +299,11 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     get().triggerNetworkCallbacks();
   },
 
-  // Set sync status
+  /**
+   * Sets the current synchronization status of the application.
+   *
+   * @param syncStatus The new `SyncStatus`.
+   */
   setSyncStatus: (syncStatus: SyncStatus) => {
     logger.info("sync", `Sync status: ${syncStatus}`);
 
@@ -264,7 +320,11 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     }
   },
 
-  // Set syncing state
+  /**
+   * Sets the syncing state of the application.
+   *
+   * @param isSyncing A boolean indicating whether a sync is in progress.
+   */
   setSyncing: (isSyncing: boolean) => {
     logger.info("sync", `Syncing: ${isSyncing}`);
 
@@ -274,7 +334,11 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     });
   },
 
-  // Update sync statistics
+  /**
+   * Updates the synchronization statistics.
+   *
+   * @param stats A partial `SyncStats` object with the new statistics.
+   */
   updateSyncStats: (stats: Partial<SyncStats>) => {
     const currentStats = get().syncStats;
     const updatedStats = { ...currentStats, ...stats };
@@ -284,7 +348,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     set({ syncStats: updatedStats });
   },
 
-  // Increment retry count
+  /**
+   * Increments the retry count in the sync statistics.
+   */
   incrementRetryCount: () => {
     const { syncStats } = get();
     const updatedStats = {
@@ -297,7 +363,11 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     set({ syncStats: updatedStats });
   },
 
-  // Set error
+  /**
+   * Records an error in the store's state.
+   *
+   * @param error A string describing the error.
+   */
   setError: (error: string) => {
     logger.error("connection", `Connection error: ${error}`);
 
@@ -309,7 +379,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     });
   },
 
-  // Clear error
+  /**
+   * Clears the last recorded error from the state.
+   */
   clearError: () => {
     logger.info("connection", "Error cleared");
 
@@ -319,7 +391,12 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     });
   },
 
-  // Update queue counts
+  /**
+   * Updates the counts of queued and failed messages.
+   *
+   * @param queuedMessagesCount The number of messages currently in the queue.
+   * @param failedMessagesCount The number of messages that have failed to send.
+   */
   updateQueueCounts: (
     queuedMessagesCount: number,
     failedMessagesCount: number
@@ -342,7 +419,11 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     });
   },
 
-  // Refresh queue counts from SQLite
+  /**
+   * Refreshes the queued and failed message counts from the SQLite database.
+   *
+   * @returns A promise that resolves when the counts are refreshed.
+   */
   refreshQueueCounts: async () => {
     try {
       const queuedMessages = await sqliteService.getQueuedMessages();
@@ -363,7 +444,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     }
   },
 
-  // Reset sync statistics
+  /**
+   * Resets all synchronization statistics to their initial values.
+   */
   resetSyncStats: () => {
     logger.info("sync", "Sync stats reset");
 
@@ -374,6 +457,14 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     });
   },
 
+  /**
+   * Updates the store's state with the current connection status of Firestore.
+   *
+   * If the connection is restored and there are messages in the queue, this
+   * method will also trigger the network callbacks to start the sync process.
+   *
+   * @param connected A boolean indicating whether Firestore is connected.
+   */
   updateFirestoreConnectionState: (connected: boolean) => {
     const previousState = get().firestoreConnected;
     set({ firestoreConnected: connected });
@@ -406,7 +497,15 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     }
   },
 
-  // Register a callback for network events (returns unsubscribe function)
+  /**
+   * Registers a callback function to be executed when the network connection is restored.
+   *
+   * This is a key mechanism for orchestrating data synchronization. Other stores
+   * can register their sync logic here to have it automatically run upon reconnection.
+   *
+   * @param callback The function to be executed.
+   * @returns An `unsubscribe` function to remove the callback.
+   */
   registerNetworkCallback: (callback: NetworkEventCallback) => {
     const { networkEventCallbacks } = get();
     networkEventCallbacks.add(callback);
@@ -437,7 +536,14 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     };
   },
 
-  // Trigger all registered network callbacks
+  /**
+   * Executes all registered network event callbacks.
+   *
+   * This is typically called automatically when the network is restored, but it
+   * can also be triggered manually.
+   *
+   * @returns A promise that resolves when all callbacks have completed.
+   */
   triggerNetworkCallbacks: async () => {
     const { networkEventCallbacks, isOnline, connectionStatus } = get();
 
