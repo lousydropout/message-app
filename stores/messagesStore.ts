@@ -5,6 +5,7 @@ import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { logger } from "@/stores/loggerStore";
+import { useUsersStore } from "@/stores/usersStore";
 import { Conversation } from "@/types/Conversation";
 import { Message } from "@/types/Message";
 import * as Crypto from "expo-crypto";
@@ -152,6 +153,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         if (allParticipantIds.size > 0) {
           try {
             await userService.getUsersByIds(Array.from(allParticipantIds));
+
+            // Subscribe to real-time updates for all participants
+            const { subscribeToUsers } = useUsersStore.getState();
+            subscribeToUsers(Array.from(allParticipantIds));
           } catch (error) {
             logger.debug("messages", "Failed to cache participant profiles", {
               error: error instanceof Error ? error.message : "Unknown error",

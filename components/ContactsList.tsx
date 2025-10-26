@@ -1,3 +1,4 @@
+import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { useContactsStore } from "@/stores/contactsStore";
 import { User } from "@/types/User";
@@ -69,29 +70,43 @@ export default function ContactsList({
     );
   };
 
-  const renderFriendCard = ({ item }: { item: User }) => (
-    <TouchableOpacity
-      style={styles.friendCard}
-      onPress={() => onFriendSelect?.(item)}
-      onLongPress={() => handleBlockFriend(item)}
-    >
-      <View style={styles.userInfo}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {item.displayName.charAt(0).toUpperCase()}
-          </Text>
+  const renderFriendCard = ({ item }: { item: User }) => {
+    const statusInfo = userService.getOnlineStatusInfo(item);
+
+    return (
+      <TouchableOpacity
+        style={styles.friendCard}
+        onPress={() => onFriendSelect?.(item)}
+        onLongPress={() => handleBlockFriend(item)}
+      >
+        <View style={styles.userInfo}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {item.displayName.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+          <View style={styles.userDetails}>
+            <Text style={styles.displayName}>{item.displayName}</Text>
+            <Text style={styles.email}>{item.email}</Text>
+            <Text
+              style={[
+                styles.status,
+                {
+                  color: statusInfo.color,
+                  fontWeight: statusInfo.fontWeight as any,
+                },
+              ]}
+            >
+              {statusInfo.text}
+            </Text>
+          </View>
         </View>
-        <View style={styles.userDetails}>
-          <Text style={styles.displayName}>{item.displayName}</Text>
-          <Text style={styles.email}>{item.email}</Text>
-          <Text style={styles.status}>Online</Text>
+        <View style={styles.messageButton}>
+          <Text style={styles.messageButtonText}>Message</Text>
         </View>
-      </View>
-      <View style={styles.messageButton}>
-        <Text style={styles.messageButtonText}>Message</Text>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -194,7 +209,6 @@ const styles = StyleSheet.create({
   },
   status: {
     fontSize: 12,
-    color: "#28A745",
     fontWeight: "500",
   },
   messageButton: {

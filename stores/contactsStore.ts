@@ -2,6 +2,7 @@ import { db } from "@/config/firebase";
 import friendService from "@/services/friendService";
 import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
+import { useUsersStore } from "@/stores/usersStore";
 import { FriendRequest } from "@/types/FriendRequest";
 import { User } from "@/types/User";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
@@ -58,6 +59,13 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     try {
       const friendIds = await friendService.getFriends(userId);
       const friends = await userService.getUsersByIds(friendIds);
+
+      // Subscribe to real-time updates for all friends
+      if (friendIds.length > 0) {
+        const { subscribeToUsers } = useUsersStore.getState();
+        subscribeToUsers(friendIds);
+      }
+
       set({ friends, loading: false });
     } catch (error) {
       console.error("Error loading friends:", error);

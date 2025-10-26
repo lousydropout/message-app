@@ -549,6 +549,20 @@ export function ConversationView({
                       <Text style={styles.participantEmail}>
                         {participant?.email || ""}
                       </Text>
+                      {participant && (
+                        <Text
+                          style={[
+                            styles.participantStatus,
+                            {
+                              color:
+                                userService.getOnlineStatusInfo(participant)
+                                  .color,
+                            },
+                          ]}
+                        >
+                          {userService.getOnlineStatusText(participant)}
+                        </Text>
+                      )}
                     </View>
                     {isCurrentUser && (
                       <View style={styles.currentUserBadge}>
@@ -757,6 +771,10 @@ const styles = StyleSheet.create({
   participantEmail: {
     fontSize: 14,
     color: "#666",
+  },
+  participantStatus: {
+    fontSize: 12,
+    marginTop: 2,
   },
   currentUserBadge: {
     backgroundColor: "#E8F4FD",

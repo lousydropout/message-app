@@ -20,6 +20,7 @@ export interface AuthState {
   signIn: (email: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
+  createProfile: (profileData: Partial<UserProfile>) => Promise<void>;
   initialize: () => () => void;
   setLogoutCallback: (callback: () => void) => void;
 }
@@ -147,6 +148,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!user || !userProfile) throw new Error("User not authenticated");
     await userService.updateUserProfile(user.uid, updates);
     set({ userProfile: { ...userProfile, ...updates } });
+  },
+
+  async createProfile(profileData: Partial<UserProfile>) {
+    const { user } = get();
+    if (!user) throw new Error("User not authenticated");
+    await userService.createUserProfile(user.uid, profileData);
+    const newProfile = await userService.getUserProfile(user.uid);
+    set({ userProfile: newProfile });
   },
 
   setLogoutCallback(callback: () => void) {

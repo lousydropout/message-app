@@ -78,6 +78,8 @@ interface SQLiteUser {
   blockedUsers: string; // JSON array
   createdAt: number;
   lastSeen: number;
+  online: number; // 0 or 1
+  heartbeat: number; // timestamp in milliseconds
   syncedAt: number | null;
 }
 
@@ -344,6 +346,42 @@ class SQLiteService {
           syncedAt INTEGER
         );
       `);
+
+      // Check if we need to add the new columns (migration for existing databases)
+      try {
+        const tableInfo = await this.db.getAllAsync(`PRAGMA table_info(users)`);
+        const hasOnlineColumn = tableInfo.some(
+          (col: any) => col.name === "online"
+        );
+        const hasHeartbeatColumn = tableInfo.some(
+          (col: any) => col.name === "heartbeat"
+        );
+
+        if (!hasOnlineColumn) {
+          console.log("sqlite", "Adding 'online' column to users table");
+          await this.db.execAsync(
+            `ALTER TABLE users ADD COLUMN online INTEGER NOT NULL DEFAULT 0;`
+          );
+        }
+
+        if (!hasHeartbeatColumn) {
+          console.log("sqlite", "Adding 'heartbeat' column to users table");
+          await this.db.execAsync(
+            `ALTER TABLE users ADD COLUMN heartbeat INTEGER NOT NULL DEFAULT 0;`
+          );
+        }
+
+        if (!hasOnlineColumn || !hasHeartbeatColumn) {
+          console.log("sqlite", "Successfully migrated users table schema");
+        }
+      } catch (migrationError) {
+        console.warn(
+          "sqlite",
+          "Error during users table migration:",
+          migrationError
+        );
+        // Continue anyway - the app should still work
+      }
 
       // Create indexes for conversations
       await this.db.execAsync(`
@@ -1896,8 +1934,8 @@ class SQLiteService {
           `
           INSERT OR REPLACE INTO users (
             id, email, displayName, avatar, languagePreferences,
-            aiSettings, blockedUsers, createdAt, lastSeen, syncedAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            aiSettings, blockedUsers, createdAt, lastSeen, online, heartbeat, syncedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
           [
             user.id,
@@ -1907,8 +1945,10 @@ class SQLiteService {
             JSON.stringify(user.languagePreferences),
             JSON.stringify(user.aiSettings),
             JSON.stringify(user.blockedUsers),
-            user.createdAt.toMillis(),
-            user.lastSeen.toMillis(),
+            user.createdAt?.toMillis() || Date.now(),
+            user.lastSeen?.toMillis() || Date.now(),
+            user.online ? 1 : 0,
+            user.heartbeat?.toMillis() || 0,
             Date.now(),
           ]
         );
@@ -1943,8 +1983,8 @@ class SQLiteService {
         blockedUsers: JSON.parse(row.blockedUsers),
         createdAt: Timestamp.fromMillis(row.createdAt),
         lastSeen: Timestamp.fromMillis(row.lastSeen),
-        online: false,
-        heartbeat: Timestamp.fromMillis(0),
+        online: row.online === 1,
+        heartbeat: Timestamp.fromMillis(row.heartbeat),
       } as User;
     } catch (error) {
       console.error("sqlite", "Error getting user profile:", error);
@@ -1979,8 +2019,8 @@ class SQLiteService {
         blockedUsers: JSON.parse(row.blockedUsers),
         createdAt: Timestamp.fromMillis(row.createdAt),
         lastSeen: Timestamp.fromMillis(row.lastSeen),
-        online: false,
-        heartbeat: Timestamp.fromMillis(0),
+        online: row.online === 1,
+        heartbeat: Timestamp.fromMillis(row.heartbeat),
       })) as User[];
     } catch (error) {
       console.error("sqlite", "Error getting user profiles:", error);

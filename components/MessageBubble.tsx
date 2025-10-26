@@ -1,14 +1,18 @@
 import userService from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { Message } from "@/types/Message";
-import { User } from "@/types/User";
+import { SUPPORTED_LANGUAGES, User } from "@/types/User";
+import { getAuth } from "firebase/auth";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
   Dimensions,
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 
@@ -31,11 +35,20 @@ export function MessageBubble({
   onLongPress,
   onRetry,
 }: MessageBubbleProps) {
-  const { user } = useAuthStore();
+  const { user, userProfile } = useAuthStore();
   const [senderProfile, setSenderProfile] = useState<User | null>(
     sender || null
   );
   const isOwnMessage = user?.uid === message.senderId;
+
+  // Translation modal state
+  const [translationModalVisible, setTranslationModalVisible] = useState(false);
+  const [translationData, setTranslationData] = useState<{
+    detectedLanguage: string;
+    translatedText: string;
+    culturalNotes?: string;
+  } | null>(null);
+  const [translating, setTranslating] = useState(false);
 
   useEffect(() => {
     if (!senderProfile && !isOwnMessage) {
@@ -106,74 +119,208 @@ export function MessageBubble({
     }
   };
 
-  return (
-    <Pressable
-      style={[
-        styles.container,
-        isOwnMessage ? styles.ownMessage : styles.otherMessage,
-      ]}
-      onLongPress={handleLongPress}
-    >
-      <View
-        style={[
-          styles.messageContainer,
-          isOwnMessage
-            ? styles.ownMessageContainer
-            : styles.otherMessageContainer,
-        ]}
-      >
-        {showDisplayName && (
-          <Text style={styles.senderName}>
-            {isOwnMessage
-              ? "You "
-              : senderProfile?.displayName + " " || "Someone "}
-          </Text>
-        )}
+  const translateMessage = async () => {
+    if (
+      !userProfile?.languagePreferences ||
+      userProfile.languagePreferences.length === 0
+    ) {
+      Alert.alert("Error", "No preferred languages set in your profile");
+      return;
+    }
 
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+    if (!apiUrl) {
+      Alert.alert("Error", "API URL not configured");
+      return;
+    }
+
+    setTranslating(true);
+    setTranslationModalVisible(true);
+
+    try {
+      // Get Firebase ID token
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error("User not signed in");
+      }
+
+      const idToken = await currentUser.getIdToken();
+
+      // Get target language (first preferred language)
+      const targetLanguageCode = userProfile.languagePreferences[0];
+      const targetLanguage =
+        SUPPORTED_LANGUAGES.find((lang) => lang.code === targetLanguageCode)
+          ?.name || "English";
+
+      // Make translation request
+      const response = await fetch(`${apiUrl}/translate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          language: targetLanguage,
+          content: message.text,
+        }),
+      });
+
+      const responseData = await response.json();
+
+      if (response.ok && responseData.translated_text) {
+        setTranslationData({
+          detectedLanguage: responseData.original_language || "Unknown",
+          translatedText: responseData.translated_text,
+          culturalNotes: responseData.cultural_notes,
+        });
+      } else {
+        throw new Error(responseData.error || "Translation failed");
+      }
+    } catch (error: any) {
+      Alert.alert(
+        "Translation Error",
+        error.message || "Failed to translate message"
+      );
+      setTranslationModalVisible(false);
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  const handleMessagePress = () => {
+    // Only allow translation for other users' messages
+    if (!isOwnMessage) {
+      translateMessage();
+    }
+  };
+
+  return (
+    <>
+      <Pressable
+        style={[
+          styles.container,
+          isOwnMessage ? styles.ownMessage : styles.otherMessage,
+        ]}
+        onPress={handleMessagePress}
+        onLongPress={handleLongPress}
+      >
         <View
           style={[
-            styles.bubble,
-            isOwnMessage ? styles.ownBubble : styles.otherBubble,
-            message.status === "failed" && styles.failedBubble,
+            styles.messageContainer,
+            isOwnMessage
+              ? styles.ownMessageContainer
+              : styles.otherMessageContainer,
           ]}
         >
-          <Text
-            style={[
-              styles.messageText,
-              isOwnMessage ? styles.ownMessageText : styles.otherMessageText,
-            ]}
-            numberOfLines={0}
-            ellipsizeMode="clip"
-          >
-            {message.text + " "}
-          </Text>
-        </View>
-
-        <View style={styles.messageFooter}>
-          <Text style={styles.timestamp}>
-            {/* NOTE: Adding a space here prevents the last character(s) from
-            being cut off on Android */}
-            {formatTime(message.timestamp) + " "}
-          </Text>
-
-          {isOwnMessage && (
-            <View style={styles.statusContainer}>
-              <Text
-                style={[
-                  styles.statusText,
-                  message.status === "read" && styles.readStatusText,
-                  message.status === "queued" && styles.queuedStatusText, // NEW
-                  message.status === "failed" && styles.failedStatusText,
-                ]}
-                onPress={message.status === "failed" ? handleRetry : undefined}
-              >
-                {getMessageStatus()}
-              </Text>
-            </View>
+          {showDisplayName && (
+            <Text style={styles.senderName}>
+              {isOwnMessage
+                ? "You "
+                : senderProfile?.displayName + " " || "Someone "}
+            </Text>
           )}
+
+          <View
+            style={[
+              styles.bubble,
+              isOwnMessage ? styles.ownBubble : styles.otherBubble,
+              message.status === "failed" && styles.failedBubble,
+            ]}
+          >
+            <Text
+              style={[
+                styles.messageText,
+                isOwnMessage ? styles.ownMessageText : styles.otherMessageText,
+              ]}
+              numberOfLines={0}
+              ellipsizeMode="clip"
+            >
+              {message.text + " "}
+            </Text>
+          </View>
+
+          <View style={styles.messageFooter}>
+            <Text style={styles.timestamp}>
+              {/* NOTE: Adding a space here prevents the last character(s) from
+            being cut off on Android */}
+              {formatTime(message.timestamp) + " "}
+            </Text>
+
+            {isOwnMessage && (
+              <View style={styles.statusContainer}>
+                <Text
+                  style={[
+                    styles.statusText,
+                    message.status === "read" && styles.readStatusText,
+                    message.status === "queued" && styles.queuedStatusText, // NEW
+                    message.status === "failed" && styles.failedStatusText,
+                  ]}
+                  onPress={
+                    message.status === "failed" ? handleRetry : undefined
+                  }
+                >
+                  {getMessageStatus()}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
-      </View>
-    </Pressable>
+      </Pressable>
+
+      {/* Translation Modal */}
+      <Modal
+        visible={translationModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setTranslationModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Translation</Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setTranslationModalVisible(false)}
+              >
+                <Text style={styles.modalCloseButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              {translating ? (
+                <Text style={styles.loadingText}>Translating...</Text>
+              ) : translationData ? (
+                <View>
+                  <View style={styles.translationSection}>
+                    <Text style={styles.sectionLabel}>Detected Language:</Text>
+                    <Text style={styles.sectionValue}>
+                      {translationData.detectedLanguage}
+                    </Text>
+                  </View>
+
+                  <View style={styles.translationSection}>
+                    <Text style={styles.sectionLabel}>Translated Text:</Text>
+                    <Text style={styles.translatedText}>
+                      {translationData.translatedText}
+                    </Text>
+                  </View>
+
+                  {translationData.culturalNotes && (
+                    <View style={styles.translationSection}>
+                      <Text style={styles.sectionLabel}>Cultural Notes:</Text>
+                      <Text style={styles.culturalNotes}>
+                        {translationData.culturalNotes}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ) : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -290,5 +437,95 @@ const styles = StyleSheet.create({
   queuedStatusText: {
     color: "#FFA500",
     fontStyle: "italic",
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    margin: 20,
+    maxHeight: "80%",
+    width: "90%",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e9ecef",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#212529",
+  },
+  modalCloseButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: "#f8f9fa",
+  },
+  modalCloseButtonText: {
+    fontSize: 16,
+    color: "#6c757d",
+    fontWeight: "bold",
+  },
+  modalBody: {
+    padding: 20,
+    maxHeight: 400,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    fontStyle: "italic",
+  },
+  translationSection: {
+    marginBottom: 16,
+  },
+  sectionLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#495057",
+    marginBottom: 4,
+  },
+  sectionValue: {
+    fontSize: 16,
+    color: "#212529",
+    fontWeight: "500",
+  },
+  translatedText: {
+    fontSize: 16,
+    color: "#212529",
+    lineHeight: 22,
+    backgroundColor: "#f8f9fa",
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: "#007AFF",
+  },
+  culturalNotes: {
+    fontSize: 14,
+    color: "#6c757d",
+    fontStyle: "italic",
+    lineHeight: 20,
+    backgroundColor: "#fff3cd",
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: "#ffc107",
   },
 });

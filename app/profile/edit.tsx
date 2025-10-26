@@ -14,7 +14,8 @@ import {
 
 export default function ProfileEditScreen() {
   const router = useRouter();
-  const { userProfile, updateProfile, loading, logout } = useAuthStore();
+  const { userProfile, updateProfile, createProfile, loading, logout } =
+    useAuthStore();
 
   const [languagePreferences, setLanguagePreferences] = useState<
     SupportedLanguageCode[]
@@ -68,7 +69,25 @@ export default function ProfileEditScreen() {
       ]);
     } catch (error) {
       console.error("Error updating profile:", error);
-      Alert.alert("Error", "Failed to update profile. Please try again.");
+
+      // Try creating the profile if update failed
+      try {
+        console.log("Attempting to create profile instead...");
+        await createProfile({
+          languagePreferences,
+          aiSettings,
+        });
+
+        Alert.alert("Success", "Profile created successfully!", [
+          { text: "OK", onPress: () => router.replace("/(tabs)") },
+        ]);
+      } catch (createError) {
+        console.error("Error creating profile:", createError);
+        Alert.alert(
+          "Error",
+          "Failed to update or create profile. Please try again."
+        );
+      }
     } finally {
       setSaving(false);
     }

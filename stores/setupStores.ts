@@ -6,6 +6,7 @@ import {
   setupMessagesStoreCallbacks,
   useMessagesStore,
 } from "@/stores/messagesStore";
+import { useUsersStore } from "@/stores/usersStore";
 
 // Setup function to initialize store connections
 export const setupStoreConnections = () => {
@@ -24,6 +25,10 @@ export const setupStoreConnections = () => {
     logger.info("stores", "Clearing messages store data on logout");
     const { clearAllData } = useMessagesStore.getState();
     clearAllData();
+
+    logger.info("stores", "Clearing user subscriptions on logout");
+    const { clearAllSubscriptions } = useUsersStore.getState();
+    clearAllSubscriptions();
   });
 
   logger.info("stores", "✅ Store connections established");
@@ -32,6 +37,11 @@ export const setupStoreConnections = () => {
   return () => {
     logger.info("stores", "🔗 Cleaning up store connections...");
     unsubscribeMessages();
+
+    // Clear user subscriptions
+    const { clearAllSubscriptions } = useUsersStore.getState();
+    clearAllSubscriptions();
+
     logger.info("stores", "✅ Store connections cleaned up");
   };
 };

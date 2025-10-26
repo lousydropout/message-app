@@ -6,10 +6,12 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
   Timestamp,
+  Unsubscribe,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -303,6 +305,170 @@ export class UserService {
       console.error("Error getting users by IDs:", error);
       throw error;
     }
+  }
+
+  /**
+   * Get heartbeat time difference in seconds
+   */
+  private getHeartbeatTimeDiff(user: User): number | null {
+    if (!user.heartbeat) {
+      return null;
+    }
+
+    const now = new Date();
+    const heartbeatTime = user.heartbeat.toDate
+      ? user.heartbeat.toDate()
+      : new Date(user.heartbeat.seconds * 1000);
+    const timeDiffMs = now.getTime() - heartbeatTime.getTime();
+    return timeDiffMs / 1000;
+  }
+
+  /**
+   * Check if a user is currently online based on heartbeat
+   * Uses 40-second timeout as per presence system design
+   */
+  isUserOnline(user: User): boolean {
+    if (!user.online) {
+      return false;
+    }
+
+    const timeDiffSeconds = this.getHeartbeatTimeDiff(user);
+    if (timeDiffSeconds === null) {
+      return false;
+    }
+
+    // User is online if heartbeat is within last 40 seconds
+    return timeDiffSeconds <= 40;
+  }
+
+  /**
+   * Get formatted online status text for a user
+   */
+  getOnlineStatusText(user: User): string {
+    if (this.isUserOnline(user)) {
+      return "online";
+    }
+
+    // Show "Last seen X ago" for offline users
+    const timeDiffSeconds = this.getHeartbeatTimeDiff(user);
+    if (timeDiffSeconds === null) {
+      return "offline";
+    }
+
+    const timeDiffMinutes = Math.floor(timeDiffSeconds / 60);
+    const timeDiffHours = Math.floor(timeDiffMinutes / 60);
+    const timeDiffDays = Math.floor(timeDiffHours / 24);
+
+    if (timeDiffMinutes < 40) {
+      return "online";
+    } else if (timeDiffMinutes < 60) {
+      return `Last seen ${timeDiffMinutes}m ago`;
+    } else if (timeDiffHours < 24) {
+      return `Last seen ${timeDiffHours}h ago`;
+    } else {
+      return `Last seen ${timeDiffDays}d ago`;
+    }
+  }
+
+  /**
+   * Get online status with styling information
+   */
+  getOnlineStatusInfo(user: User): {
+    isOnline: boolean;
+    text: string;
+    color: string;
+    fontWeight: string;
+  } {
+    const isOnline = this.isUserOnline(user);
+    const text = this.getOnlineStatusText(user);
+
+    return {
+      isOnline,
+      text,
+      color: isOnline ? "#2E7D32" : "#9E9E9E",
+      fontWeight: isOnline ? "600" : "400",
+    };
+  }
+
+  /**
+   * Subscribe to real-time updates for multiple users
+   * Handles batching for Firestore's 30-item limit on 'in' queries
+   */
+  subscribeToUsers(
+    userIds: string[],
+    callback: (users: User[]) => void
+  ): Unsubscribe {
+    if (userIds.length === 0) {
+      // Return a no-op unsubscribe function
+      return () => {};
+    }
+
+    const BATCH_SIZE = 30; // Firestore limit for 'in' queries
+    const batches: string[][] = [];
+
+    // Split userIds into batches of 30
+    for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
+      batches.push(userIds.slice(i, i + BATCH_SIZE));
+    }
+
+    const unsubscribes: Unsubscribe[] = [];
+
+    // Create a subscription for each batch
+    batches.forEach((batch) => {
+      const usersQuery = query(
+        collection(db, "users"),
+        where("id", "in", batch)
+      );
+
+      const unsubscribe = onSnapshot(
+        usersQuery,
+        async (snapshot) => {
+          const users: User[] = [];
+
+          snapshot.forEach((doc) => {
+            const userData = doc.data() as User;
+            users.push(userData);
+          });
+
+          // Update SQLite cache for all users in this batch
+          for (const user of users) {
+            try {
+              await sqliteService.saveUserProfile(user);
+            } catch (error) {
+              console.error("Error updating user profile in SQLite:", error);
+            }
+          }
+
+          // Call the callback with all users from all batches
+          // We need to collect users from all batches, so we'll trigger a full refresh
+          if (users.length > 0) {
+            // Get all currently subscribed users from SQLite
+            try {
+              const allSubscribedUsers = await sqliteService.getUserProfiles(
+                userIds
+              );
+              callback(allSubscribedUsers);
+            } catch (error) {
+              console.error(
+                "Error getting subscribed users from SQLite:",
+                error
+              );
+              callback(users); // Fallback to just the current batch
+            }
+          }
+        },
+        (error) => {
+          console.error("Error subscribing to users:", error);
+        }
+      );
+
+      unsubscribes.push(unsubscribe);
+    });
+
+    // Return a function that unsubscribes from all batches
+    return () => {
+      unsubscribes.forEach((unsubscribe) => unsubscribe());
+    };
   }
 }
 
