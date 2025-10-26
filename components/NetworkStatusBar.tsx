@@ -17,7 +17,6 @@ export default function NetworkStatusBar() {
   const [modalVisible, setModalVisible] = useState(false);
   const {
     isOnline,
-    connectionStatus,
     networkType,
     syncStatus,
     isSyncing,
