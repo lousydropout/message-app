@@ -37,6 +37,7 @@ export interface ContactsState {
     userId: string,
     targetUserId: string
   ) => Promise<"stranger" | "pending" | "friend" | "blocked">;
+  syncFriendsFromAcceptedRequests: (userId: string) => Promise<void>;
 
   // Real-time subscriptions
   subscribeToFriendRequests: (userId: string) => () => void;
@@ -250,16 +251,20 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     targetUserId: string
   ): Promise<"stranger" | "pending" | "friend" | "blocked"> => {
     try {
-      // Check if there's an existing friend request between these users
+      // First check if they are already friends using the subcollection
+      const areFriends = await friendService.areFriends(userId, targetUserId);
+      if (areFriends) {
+        return "friend";
+      }
+
+      // Check if there's a pending friend request between these users
       const existingRequest = await friendService.getFriendRequest(
         userId,
         targetUserId
       );
 
       if (existingRequest) {
-        if (existingRequest.status === "accepted") {
-          return "friend";
-        } else if (existingRequest.status === "pending") {
+        if (existingRequest.status === "pending") {
           return "pending";
         } else if (existingRequest.status === "declined") {
           return "stranger"; // Treat declined requests as strangers
@@ -378,5 +383,54 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     );
 
     return unsubscribe;
+  },
+
+  async syncFriendsFromAcceptedRequests(userId: string) {
+    console.log("Starting syncFriendsFromAcceptedRequests");
+    try {
+      const acceptedRequests = await friendService.getAcceptedSentRequests(
+        userId
+      );
+      console.log(
+        "syncFriendsFromAcceptedRequests acceptedRequests:",
+        acceptedRequests
+      );
+
+      // Process each request one at a time for reliability
+      for (const request of acceptedRequests) {
+        try {
+          // Check if friend relationship already exists
+          const friendExists = await friendService.areFriends(
+            userId,
+            request.toUserId
+          );
+          console.log("syncFriendsFromAcceptedRequests", friendExists);
+
+          if (!friendExists) {
+            // Add friend to subcollection
+            await friendService.addFriendToSubcollection(
+              userId,
+              request.toUserId
+            );
+          }
+
+          // Delete the processed request (only fromUser deletes)
+          await friendService.deleteFriendRequest(request.id);
+          console.log("syncFriendsFromAcceptedRequests", "deleted", request.id);
+        } catch (error) {
+          console.error(
+            `Error processing accepted request ${request.id}:`,
+            error
+          );
+          // Continue processing other requests even if one fails
+        }
+      }
+
+      // Reload friends list to reflect any new additions
+      await get().loadFriends(userId);
+    } catch (error) {
+      console.error("Error syncing friends from accepted requests:", error);
+      throw error;
+    }
   },
 }));

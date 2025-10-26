@@ -89,7 +89,11 @@ export default function RootLayout() {
         subscribeToSentRequests,
         subscribeToAcceptedRequests,
         subscribeToFriendsSubcollection,
+        syncFriendsFromAcceptedRequests,
       } = useContactsStore.getState();
+
+      // Sync friends from accepted requests on startup
+      syncFriendsFromAcceptedRequests(user.uid).catch(console.error);
 
       const unsubscribeFriendRequests = subscribeToFriendRequests(user.uid);
       const unsubscribeSentRequests = subscribeToSentRequests(user.uid);

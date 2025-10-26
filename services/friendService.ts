@@ -292,6 +292,26 @@ export class FriendService {
       throw error;
     }
   }
+
+  /**
+   * Get all accepted friend requests where the user was the sender
+   * Used to sync friends subcollection on app startup
+   */
+  async getAcceptedSentRequests(userId: string): Promise<FriendRequest[]> {
+    try {
+      const requestsQuery = query(
+        collection(db, "friendRequests"),
+        where("fromUserId", "==", userId),
+        where("status", "==", "accepted")
+      );
+
+      const querySnapshot = await getDocs(requestsQuery);
+      return querySnapshot.docs.map((doc) => doc.data() as FriendRequest);
+    } catch (error) {
+      console.error("Error getting accepted sent requests:", error);
+      throw error;
+    }
+  }
 }
 
 export default FriendService.getInstance();
