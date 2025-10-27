@@ -36,23 +36,6 @@
 - Reduced Firestore costs (fewer read operations)
 - Real-time read receipt behavior (immediate feedback to other users)
 
-### 1.1. Firestore Index Optimization Pattern
-
-**Minimal Composite Index Strategy:**
-
-- Only define composite indexes that Firestore cannot auto-generate
-- Single-field indexes (email, displayName, id, updatedAt, isTyping) are automatic
-- Range queries work with automatic single-field indexes
-- Subcollection queries don't need parent document fields (already scoped)
-- Direct conversation lookups require `type + participants` composite index
-
-**Index Configuration:**
-
-- Conversations: `participants + updatedAt`, `type + participants`
-- Friend Requests: `toUserId + status`, `fromUserId + status`, `fromUserId + toUserId`
-- Messages: Automatic single-field indexes handle subcollection queries
-- Users: Automatic single-field indexes handle search queries
-
 ### 2. Friends & Presence Management Pattern
 
 **Scalable Friend System:**
@@ -71,57 +54,16 @@
 - Presence service singleton with comprehensive error handling and logging
 - Real-time online status updates for all friends
 
-**Data Structure Design:**
+### 3. Unified Queue-First Architecture
 
-```typescript
-// User documents with presence tracking
-interface User {
-  // ... existing fields
-  online: boolean; // Real-time online status
-  heartbeat: Timestamp; // Last heartbeat (30s intervals)
-}
+**Message Processing Flow:**
 
-// Friends subcollection: /users/{userId}/friends/{friendId}
-interface Friend {
-  id: string; // Friend's user ID
-  addedAt: Timestamp; // When friendship was established
-}
-
-// Friend requests preserved for audit trail
-interface FriendRequest {
-  // ... existing fields (unchanged)
-}
-```
-
-**Architecture Benefits:**
-
-- **O(1) Friend Lookups**: Subcollection queries instead of O(n) collection scans
-- **Minimal Storage**: Friend documents store only essential data
-- **Audit Trail**: friendRequests collection preserved for compliance
-- **Real-time Presence**: 30-second heartbeat with 40-second timeout
-- **Scalable**: Works efficiently with millions of users
-- **Security Compliance**: Users only update their own friend subcollections
-- **Real-time Subscriptions**: Comprehensive friend request and friend management
-
-### 3. State Management Pattern
-
-**Zustand Stores** for complex messaging state:
-
-- `authStore`: User authentication, email/password login, profiles, and presence management
-- `messagesStore`: Real-time message management with conversations and typing status
-- `contactsStore`: Contact and friend management with subcollection-based friend queries
-- `presenceService`: Online status and heartbeat management (singleton service)
-- `connectionStore`: Network connection status
-- `loggerStore`: Comprehensive logging system with SQLite persistence
-
-### 4. Hybrid Storage Pattern
-
-**SQLite + AsyncStorage + Firestore:**
-
-- **Firestore**: Authoritative source for real-time data
-- **SQLite**: Local cache for offline support and message queuing
-- **AsyncStorage**: User preferences and auth state persistence
-- **Zustand**: In-memory state management with conversation lifecycle
+- All messages flow through queue regardless of online/offline status
+- UUID generation with `Crypto.randomUUID()` for idempotency
+- Mutex-protected queue processing with retry logic
+- Sequential processing to maintain message order
+- Exponential backoff for failed operations
+- Incremental sync with `getMessagesSince()` using Firestore composite indexes
 
 **Three-tier Data Flow:**
 
@@ -129,22 +71,39 @@ interface FriendRequest {
 2. **SQLite** (Cache) → Offline message queuing and local persistence
 3. **Zustand** (Memory) → Windowed conversation state (100 messages max)
 
-### 5. Unified Queue-First Architecture
-
-**Message Processing Flow:**
-
-- All messages flow through queue regardless of online/offline status
-- UUID generation with `Crypto.randomUUID()` for idempotency
-- Mutex-protected queue processing with retry logic
-- Exponential backoff for failed operations
-- Incremental sync with `getMessagesSince()` using Firestore composite indexes
-
 **Memory Management:**
 
 - Conversation lifecycle with load/unload patterns
 - MAX_MESSAGES_IN_MEMORY = 100 per conversation
 - Subscription management with proper cleanup
 - Windowed message loading for performance
+
+### 4. AI Translation Patterns
+
+**Two-Phase Translation System:**
+
+- **Exploratory Phase**: AI analyzes message and conversation history to determine if more context is needed
+- **Tool Calling Decision**: AI either translates directly (high confidence) or requests additional context
+- **RAG Search**: SQLite FTS5 search for relevant conversation context when needed
+- **Execution Phase**: AI translates with full context and cultural awareness
+
+**MiniGraph Orchestration:**
+
+- LangGraph-style state machine for complex AI workflows
+- State transitions: `translate` → `search` (if needed) → `done`
+- Context passing between nodes for seamless data flow
+- Error handling and retry logic built into the graph
+
+### 5. State Management Pattern
+
+**Zustand Stores** for complex messaging state:
+
+- `authStore`: User authentication, email/password login, profiles, and presence management
+- `messagesStore`: Real-time message management with conversations and typing status
+- `contactsStore`: Contact and friend management with subcollection-based friend queries
+- `connectionStore`: Network connection status and sync management
+- `loggerStore`: Comprehensive logging system with SQLite persistence
+- `usersStore`: User profile subscriptions and caching
 
 ### 6. Error Handling & Logging Pattern
 
@@ -179,40 +138,6 @@ interface FriendRequest {
 - Friend status indicators without exposing full profiles
 - Blocked users properly excluded from all queries
 - Audit trail preservation for compliance
-
-## AI Translation Patterns
-
-### 1. Tool Calling & RAG Pattern
-
-**Two-Phase Translation System:**
-
-- **Exploratory Phase**: AI analyzes message and conversation history to determine if more context is needed
-- **Tool Calling Decision**: AI either translates directly (high confidence) or requests additional context
-- **RAG Search**: SQLite FTS5 search for relevant conversation context when needed
-- **Execution Phase**: AI translates with full context and cultural awareness
-
-**MiniGraph Orchestration:**
-
-- LangGraph-style state machine for complex AI workflows
-- State transitions: `translate` → `search` (if needed) → `done`
-- Context passing between nodes for seamless data flow
-- Error handling and retry logic built into the graph
-
-### 2. Context-Aware Translation Pattern
-
-**Conversation History Analysis:**
-
-- AI analyzes conversation history for accurate translations
-- Reference analysis identifies and explains references to earlier messages
-- Cultural context preservation for international communicators
-- Confidence scoring provides accuracy levels for translations
-
-**Real-time Progress Updates:**
-
-- Live status updates during translation process
-- User feedback for long-running operations
-- Error handling with graceful fallbacks
-- Caching system for repeated translations (currently disabled for testing)
 
 ## Performance Patterns
 

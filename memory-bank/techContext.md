@@ -4,15 +4,15 @@
 
 ### React Native + Expo
 
-- **Version**: React Native 0.81.4, Expo ~54.0.13
+- **Version**: React Native 0.81.5, Expo ~54.0.20
 - **Development**: Expo Go for real device testing
-- **Routing**: Expo Router ~6.0.12 (file-based routing)
+- **Routing**: Expo Router ~6.0.13 (file-based routing)
 - **Platform**: Cross-platform (iOS/Android/Web)
 - **Mobile Lifecycle**: Proper background/foreground handling
 
 ### Firebase
 
-- **Project**: `messageai-7e81f` (renamed from notetaker)
+- **Project**: `messageai-7e81f`
 - **Services**: Firestore, Authentication, Cloud Functions, Cloud Messaging
 - **SDK**: Firebase Web SDK (required for Expo Go)
 - **Auth**: Email/password authentication with user profiles and presence tracking
@@ -47,7 +47,7 @@
 - **Optimized Re-rendering**: Memoization and FlashList for performance
 - **Message Persistence**: SQLite storage for offline messages during app transitions
 
-### AI Integration (Advanced Implementation)
+### AI Integration (Complete Implementation)
 
 - **OpenAI API**: GPT-4.1-mini with advanced translation capabilities
 - **Server-side Processing**: AWS Lambda for API security and scalability
@@ -69,17 +69,17 @@
 - **Firestore Security Rules**: Production-ready rules with Principle of Least Privilege
 - **Optimized Indexes**: Minimal composite indexes for optimal query performance
 - **Environment Configuration**: Conditional diagnostics tab based on EXPO_PUBLIC_DEV_MODE
-- **Project**: Deployed to MessageAI2 Firebase project
+- **Project**: Deployed to MessageAI Firebase project
 - **Security**: Comprehensive access controls for all collections and subcollections
 
-## Note for handling the SQLite library
+## SQLite Implementation Notes
 
 > The following code uses the `expo-sqlite` wrapper, **not** a normal Node or RN SQLite binding.
 > This wrapper has some major behavioral quirks around async transactions, concurrency, and parameter limits that must be respected when reviewing or generating queries.
 
 **Important constraints:**
 
-1. **Async transactions aren’t real transactions.**
+1. **Async transactions aren't real transactions.**
 
    - `db.withTransactionAsync(async () => {...})` runs `BEGIN`, `await task()`, `COMMIT`.
    - If `await` yields to the event loop, the native transaction context can vanish, causing
@@ -91,7 +91,7 @@
    - Expo SQLite uses file-level locking.
    - If any other query or background read is active, `withExclusiveTransactionAsync` will throw
      `Error code 5: database is locked`.
-   - Avoid concurrent writes; queue writes through a mutex, or add a retry loop (50–100ms) on “database is locked”.
+   - Avoid concurrent writes; queue writes through a mutex, or add a retry loop (50–100ms) on "database is locked".
 
 3. **Parameter limit = 999.**
 
@@ -105,25 +105,15 @@
    - The callback API (`tx.executeSql(...)`) must be synchronous — no awaits inside.
    - Use one or the other, not both.
 
-5. **Don’t leak statements.**
+5. **Don't leak statements.**
 
-   - Expo’s internal implementation may not finalize prepared statements automatically.
-   - A dangling prepared statement can cause the next `withExclusiveTransactionAsync` to fail with “database is locked”.
+   - Expo's internal implementation may not finalize prepared statements automatically.
+   - A dangling prepared statement can cause the next `withExclusiveTransactionAsync` to fail with "database is locked".
 
 6. **Safe patterns for writes:**
-
    - Small writes → `withTransactionAsync` (same connection, no concurrency)
    - Large or critical batch writes → `withExclusiveTransactionAsync` + retry loop
    - Full control → manual `BEGIN IMMEDIATE / COMMIT / ROLLBACK` on the same connection
-
-**Request for Cursor:**
-Audit all `db.runAsync`, `db.execAsync`, and transaction calls for:
-
-- possible `await` inside `withTransactionAsync` (replace with exclusive or manual BEGIN/COMMIT);
-- unbounded concurrent calls that could collide on the write lock;
-- any statement generating more than 999 bound parameters.
-
-Ensure that all async inserts, updates, or deletes are **serialized** or **retry-safe**, and that every transaction path explicitly commits or rolls back before any new query can start.
 
 ## Project Structure
 
@@ -161,7 +151,7 @@ stores/
 ├── contactsStore.ts         # Contact and friend management
 ├── connectionStore.ts        # Network connection status
 ├── loggerStore.ts           # Comprehensive logging system
-├── notesStore.ts            # Notes management
+├── usersStore.ts            # User profile subscriptions
 └── setupStores.ts           # Store initialization
 
 services/
@@ -171,8 +161,8 @@ services/
 ├── friendService.ts         # Friend request operations with subcollection management
 ├── presenceService.ts       # Online presence and heartbeat management
 ├── userService.ts          # User profile operations
-├── sqliteService.ts        # Local database operations
-└── googleAuthService.ts     # Google OAuth integration
+├── translationService.ts    # AI translation with MiniGraph orchestration
+└── sqliteService.ts        # Local database operations
 
 types/
 ├── Message.ts               # Message interface
@@ -180,15 +170,14 @@ types/
 ├── User.ts                  # User interface with online and heartbeat fields
 ├── Friend.ts                # Friend interface for subcollection documents
 ├── FriendRequest.ts         # Friend request interface
-├── Log.ts                   # Log type definitions
-└── Note.ts                  # Note interface
+└── Log.ts                   # Log type definitions
 ```
 
 ## Firebase Configuration
 
 ### Project Setup
 
-- **Project ID**: `messageai-862e3`
+- **Project ID**: `messageai-7e81f`
 - **Database**: Firestore in production mode
 - **Authentication**: Email/password auth
 - **Cloud Functions**: OpenAI API integration
@@ -197,40 +186,10 @@ types/
 
 ### Database Schema
 
-**New Data Structures (Friends Subcollection & Online Presence)**:
+**Data Structures (Friends Subcollection & Online Presence)**:
 
 ```typescript
-// User documents now include presence fields
-interface User {
-  // ... existing fields
-  online: boolean; // Real-time online status
-  heartbeat: Timestamp; // Last heartbeat timestamp (30s intervals)
-}
-
-// Friends subcollection: /users/{userId}/friends/{friendId}
-interface Friend {
-  id: string; // Friend's user ID
-  addedAt: Timestamp; // When friendship was established
-}
-
-// Friend requests preserved for audit trail
-interface FriendRequest {
-  // ... existing fields (unchanged)
-}
-```
-
-**Architecture Benefits**:
-
-- **O(1) Friend Lookups**: Subcollection queries instead of O(n) collection scans
-- **Minimal Storage**: Friend documents store only essential data
-- **Audit Trail**: friendRequests collection preserved for compliance
-- **Real-time Presence**: 30-second heartbeat with 40-second timeout
-- **Scalable**: Works efficiently with millions of users
-- **Security Compliance**: Users only update their own friend subcollections
-- **Real-time Subscriptions**: Comprehensive friend request and friend management
-
-```typescript
-// Users Collection
+// User documents with presence tracking
 interface User {
   id: string;
   email: string;
@@ -242,20 +201,20 @@ interface User {
     culturalHints: boolean;
     formalityAdjustment: boolean;
   };
-  blockedUsers: string[]; // Array of user IDs
+  blockedUsers: string[];
   createdAt: Timestamp;
   lastSeen: Timestamp;
   online: boolean; // Real-time online status
   heartbeat: Timestamp; // Last heartbeat timestamp
 }
 
-// Friends Collection (subcollection under users)
+// Friends subcollection: /users/{userId}/friends/{friendId}
 interface Friend {
   id: string; // Friend's user ID
-  addedAt: Timestamp;
+  addedAt: Timestamp; // When friendship was established
 }
 
-// Friend Requests Collection
+// Friend requests preserved for audit trail
 interface FriendRequest {
   id: string;
   fromUserId: string;
@@ -269,12 +228,15 @@ interface FriendRequest {
 interface Conversation {
   id: string;
   participants: string[]; // Array of user IDs
+  type: "direct" | "group";
+  name?: string;
   lastMessage?: {
     id: string;
     content: string;
     senderId: string;
     timestamp: Timestamp;
   };
+  unreadCounts: { [userId: string]: number };
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -284,10 +246,11 @@ interface Message {
   id: string;
   conversationId: string;
   senderId: string;
-  content: string;
+  text: string;
   timestamp: Timestamp;
   readBy: { [userId: string]: Timestamp };
-  messageType: "text" | "image" | "file";
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 ```
 
@@ -297,14 +260,14 @@ interface Message {
 
 ```json
 {
-  "expo": "~54.0.13",
-  "react": "18.3.1",
-  "react-native": "0.81.4",
-  "expo-router": "~6.0.12",
-  "firebase": "^10.14.0",
-  "zustand": "^4.5.5",
-  "expo-sqlite": "~15.0.1",
-  "expo-crypto": "~14.0.1"
+  "expo": "~54.0.20",
+  "react": "19.1.0",
+  "react-native": "^0.81.5",
+  "expo-router": "~6.0.13",
+  "firebase": "^12.4.0",
+  "zustand": "^5.0.8",
+  "expo-sqlite": "~16.0.8",
+  "expo-crypto": "~15.0.7"
 }
 ```
 
@@ -312,9 +275,8 @@ interface Message {
 
 ```json
 {
-  "typescript": "~5.3.3",
-  "@types/react": "~18.2.79",
-  "@types/react-native": "~0.73.0",
+  "typescript": "~5.9.2",
+  "@types/react": "~19.1.0",
   "eslint": "^9.25.0",
   "eslint-config-expo": "~10.0.0"
 }
@@ -332,28 +294,10 @@ EXPO_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
 EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
 EXPO_PUBLIC_FIREBASE_APP_ID=your-app-id
+
+# AI Translation API
+EXPO_PUBLIC_API_URL=your-api-server-url
 ```
-
-### Development Setup
-
-1. **Clone and install dependencies**
-
-   ```bash
-   git clone <repository-url>
-   cd rn-firebase-hello-world
-   npm install
-   ```
-
-2. **Configure Firebase**
-
-   - Create Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
-   - Enable Firestore Database and Authentication (email/password)
-   - Copy `.env.template` to `.env.local` and fill in Firebase config
-
-3. **Run the app**
-   ```bash
-   npx expo start
-   ```
 
 ## Performance Considerations
 
