@@ -1,9 +1,9 @@
 /**
  * @fileoverview Tab Layout - Defines the main tab navigation for the application.
  *
- * This component sets up the primary navigation structure using `expo-router`'s
- * `Tabs`. It defines the four main sections of the application: Home (conversation
- * list), Contacts, Profile, and a Diagnostics screen for debugging.
+ * `Tabs`. It defines the main sections of the application: Home (conversation
+ * list), Contacts, Profile, and conditionally a Diagnostics screen for debugging
+ * (only shown when EXPO_PUBLIC_DEV_MODE=true).
  *
  * A key feature of this layout is the dynamic badge notifications on the "Home"
  * and "Contacts" tabs. These badges provide at-a-glance information about the
@@ -36,6 +36,7 @@ export default function TabLayout() {
 
   const pendingRequestsCount = friendRequests.length + sentRequests.length;
   const totalUnreadMessages = user ? getTotalUnreadCount(user.uid) : 0;
+  const isDevMode = process.env.EXPO_PUBLIC_DEV_MODE === "true";
 
   // Initialize conversations when user is available
   useEffect(() => {
@@ -95,15 +96,17 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="diagnostics"
-        options={{
-          title: "Diagnostics",
-          tabBarIcon: ({ color, size }) => (
-            <Text style={{ color, fontSize: size }}>🩺</Text>
-          ),
-        }}
-      />
+      {isDevMode && (
+        <Tabs.Screen
+          name="diagnostics"
+          options={{
+            title: "Diagnostics",
+            tabBarIcon: ({ color, size }) => (
+              <Text style={{ color, fontSize: size }}>🩺</Text>
+            ),
+          }}
+        />
+      )}
     </Tabs>
   );
 }

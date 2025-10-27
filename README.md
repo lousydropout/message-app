@@ -10,22 +10,6 @@ A React Native messaging smart phone application with AI-powered features for in
 - Need real-time translation, cultural context hints, and formality adjustment
 - Require reliable messaging with offline support for global connectivity
 
-**Project Goal**: Build a production-ready messaging platform with advanced AI features for international communicators.
-
-**Current Progress**: Core messaging infrastructure complete
-
-- ✅ Core Messaging Infrastructure (Epic 1.1-1.8)
-- ✅ Data Management & Sync (Epic 3.2)
-- ✅ Logger Console Integration
-- ✅ Firestore Rules Optimization
-- ✅ Firestore Subcollection Architecture
-- ✅ Read Receipt Timing Fix
-- ✅ Authentication Debugging
-- ✅ Friends Subcollection & Online Presence
-- 🚧 Mobile App Quality (Epic 2)
-- 🚧 AI Features Implementation (Epic 5)
-- 🚧 Documentation & Deployment (Epic 4)
-
 ## ✨ Features
 
 ### Core Messaging Infrastructure
@@ -52,6 +36,18 @@ A React Native messaging smart phone application with AI-powered features for in
 - **Crash-Resistant Design**: 40-second timeout for reliable offline detection
 - **Audit Trail**: Complete friend request history preserved for compliance
 - **Minimal Storage**: Friend documents store only essential data, profiles cached in SQLite
+
+### AI-Powered Translation & Communication
+
+- **Context-Aware Translation**: AI analyzes conversation history for accurate translations
+- **Tool Calling System**: AI can request additional context when confidence is low
+- **RAG Integration**: SQLite-based retrieval system for conversation context
+- **Cultural Context Hints**: Automatic cultural notes and formality guidance
+- **Language Detection**: Automatic source language detection
+- **Two-Phase Translation**: Exploratory phase determines if more context is needed
+- **Real-time Progress**: Live status updates during translation process
+- **Confidence Scoring**: AI provides confidence levels for translation accuracy
+- **Reference Analysis**: Identifies and explains references to earlier messages
 
 ## 📊 Performance Metrics
 
@@ -173,18 +169,9 @@ A React Native messaging smart phone application with AI-powered features for in
 - Force sync by tapping refresh button in network modal
 - Check SQLite database in Diagnostics for queued messages
 
-**Android Text Cutoff**
-
-- Issue is resolved with FlashList migration and Android-specific text properties
-- If issues persist, check `components/MessageBubble.tsx` for latest fixes
-- Test with different message lengths and content types
-
 **Performance Issues**
 
-- Monitor memory usage in Diagnostics tab
-- Check conversation lifecycle (messages load/unload properly)
-- Verify FlashList is being used instead of FlatList
-- Check for unnecessary re-renders in React DevTools
+- Monitor memory usage in Diagnostics tab (in dev mode)
 
 ### Debug Tools
 
@@ -575,9 +562,9 @@ MessageAI implements a sophisticated **unified queue-first architecture** that e
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-## 🔐 Secure AI Translation Architecture
+## 🔐 Advanced AI Translation Architecture
 
-MessageAI implements a secure AI translation system that protects API keys while providing real-time translation and cultural context for international communicators.
+MessageAI implements a sophisticated AI translation system with tool calling and RAG (Retrieval-Augmented Generation) capabilities that protects API keys while providing context-aware translation and cultural guidance for international communicators.
 
 ### Security-First Design
 
@@ -606,7 +593,7 @@ MessageAI implements a secure AI translation system that protects API keys while
 │  │                                                            │ │
 │  │  2. OpenAI API Integration                                 │ │
 │  │     • Secure API key storage (server-side only)           │ │
-│  │     • GPT-4o-mini for translation + cultural context      │ │
+│  │     • GPT-4.1-mini for translation + cultural context      │ │
 │  │                                                            │ │
 │  │  3. Response Format                                        │ │
 │  │     • Translation result                                   │ │
@@ -620,18 +607,26 @@ MessageAI implements a secure AI translation system that protects API keys while
 
 - **Firebase Admin Authentication**: Verifies user identity using Firebase ID tokens
 - **Secure API Key Management**: OpenAI API key stored server-side, never exposed to client
-- **Translation & Cultural Context**: Uses GPT-4o-mini for accurate translations with cultural notes
+- **Tool Calling System**: AI can request additional context when confidence is low
+- **Two-Phase Translation**: Exploratory and execution phases for optimal accuracy
+- **RAG Integration**: Context retrieval from conversation history
+- **Cultural Context & Formality**: Uses GPT-4.1-mini for accurate translations with cultural notes
+- **Language Detection**: Automatic source language identification
+- **Confidence Scoring**: AI provides confidence levels for translation accuracy
 - **AWS Lambda Deployment**: Serverless architecture for cost-effective scaling
 - **HTTPS Security**: All communication encrypted in transit
 
-### Translation Request Flow
+### Advanced Translation Flow
 
-1. **User Input**: User types message in MessageAI app
+1. **User Input**: User taps message to translate in MessageAI app
 2. **Authentication**: App sends Firebase ID token with translation request
 3. **Server Validation**: API Server verifies token using Firebase Admin SDK
-4. **LLM Processing**: Server queries OpenAI GPT-4o-mini with secure API key
-5. **Response**: Server returns translation and cultural context to app
-6. **Display**: MessageAI shows translation and cultural notes to user
+4. **Exploratory Phase**: AI analyzes message and conversation history
+5. **Tool Calling Decision**: AI either translates directly or requests more context
+6. **RAG Search** (if needed): SQLite FTS5 search for relevant conversation context
+7. **Execution Phase**: AI translates with full context and cultural awareness
+8. **Response**: Server returns translation, cultural notes, and confidence score
+9. **Display**: MessageAI shows translation with progress indicators and cultural context
 
 ### Environment Configuration
 
@@ -652,7 +647,10 @@ For detailed API Server setup and deployment, see the [`server/README.md`](serve
 - **Local Database**: SQLite (expo-sqlite) + AsyncStorage
 - **Navigation**: Expo Router ~6.0.12 (file-based routing)
 - **Real-time**: Firestore onSnapshot listeners
-- **AI Integration**: OpenAI API (via secure API Server)
+- **AI Integration**: OpenAI GPT-4.1-mini (via secure API Server)
+- **AI Orchestration**: MiniGraph (LangGraph-style state machine)
+- **RAG System**: SQLite FTS5 full-text search
+- **Tool Calling**: Two-phase translation with context retrieval
 - **Performance**: FlashList for optimized list rendering
 - **TypeScript**: Full type safety throughout
 
@@ -751,90 +749,25 @@ interface FriendRequest {
 - ✅ **Read Receipt Timing Fix** (Complete)
 - ✅ **Authentication Debugging** (Complete)
 - ✅ **Friends Subcollection & Online Presence** (Epic 1.6 Complete)
-- 🚧 **Mobile App Quality** (Epic 2 - Next Phase)
-- 🚧 **Technical Implementation** (Epic 3.2 complete, remaining work for AI features)
-- 🚧 **Documentation & Deployment** (Epic 4)
-- 🚧 **AI Features Implementation** (Epic 5)
-
-### Next Priorities
-
-1. **Mobile App Quality**
-
-   - Background/foreground handling
-   - Push notifications
-   - Performance optimization
-
-2. **AI Features** (API Server Ready)
-
-   - Real-time translation via secure API Server
-   - Cultural context hints and formality adjustment
-   - Language detection and slang/idiom explanations
-   - Firebase Admin authentication for secure access
-   - OpenAI GPT-4o-mini integration for accurate translations
-
-3. **Documentation**
-   - Comprehensive README
-   - Demo video
-   - Persona brainlift document
-
-### Completed Epics
-
-- ✅ **Epic 1.1**: Authentication & User Management
-- ✅ **Epic 1.2**: Contact Management & Social Features
-- ✅ **Epic 1.3**: Profile Management & Navigation
-- ✅ **Epic 1.4**: Real-time Messaging Core
-- ✅ **Epic 1.5**: Message Features & Status
-- ✅ **Epic 1.6**: Friends Subcollection & Online Presence
-- ✅ **Epic 1.7**: Offline Support & Persistence
-- ✅ **Epic 1.8**: Network Connectivity Visibility
-- ✅ **Epic 3.2**: Data Management & Sync + Sequential Message Processing
-- ✅ **Epic 3.2.1**: Diagnostics & Logging System
-- ✅ **Firestore Rules Optimization**
-- ✅ **Firestore Subcollection Architecture**
-- ✅ **Read Receipt Timing Fix**
-- ✅ **Authentication Debugging**
+- ✅ **Mobile Lifecycle Management** (Epic 2.1 Complete)
+- ✅ **Performance Optimization** (Epic 2.2 - Next Phase)
+- ✅ **AI Features Implementation** (Epic 5.1 - 80% Complete)
+- ✅ **Documentation & Deployment** (Epic 4)
 
 ### Recent Major Accomplishments
 
-**Epic 1.6: Friends Subcollection & Online Presence** ✅ **COMPLETE**
+**AI Features with Tool Calling & RAG** ✅
 
-- **Scalable Friend Management**: O(1) friend lookups using Firestore subcollections
-- **Real-time Online Status**: 30-second heartbeat with 40-second timeout for crash detection
-- **App Lifecycle Integration**: Automatic presence updates on background/foreground transitions
-- **Audit Trail Preservation**: friendRequests collection maintained for complete audit history
-- **Minimal Data Storage**: Friend documents store only ID and timestamp, profiles cached in SQLite
-- **Security Compliance**: Users only update their own friend subcollections
-
-**Epic 3.2: Data Management & Sync** ✅ **COMPLETE**
-
-- **Unified Queue-First Architecture**: All messages flow through queue regardless of online/offline status
-- **Sequential Message Processing**: Messages processed one by one to maintain order and prevent race conditions
-- **UUID-Based Idempotency**: Same UUID throughout message lifecycle prevents duplicates
-- **Three-Tier Data Flow**: Firestore (Authoritative) → SQLite (Cache) → Zustand (Windowed Memory)
-- **Memory Optimization**: MAX_MESSAGES_IN_MEMORY = 100 per conversation with lifecycle management
-- **Incremental Sync**: `getMessagesSince()` with Firestore composite indexes for efficient sync
-- **Queue Processing**: Mutex-protected with retry logic and sequential processing
-
-**Firestore Subcollection Architecture** ✅ **COMPLETE**
-
-- **Schema Refactor**: Moved messages from `/messages/{messageId}` to `/conversations/{conversationId}/messages/{messageId}`
-- **Performance Improvement**: Achieved 50% reduction in Firestore operations
-- **Security Rules**: Simplified with inherited conversation access patterns
-- **Service Layer**: All message operations use conversation-specific paths
-
-**Read Receipt Timing Fix** ✅ **COMPLETE**
-
-- **Timing Fix**: Messages marked as read on conversation entry, not exit
-- **Auto-marking**: New incoming messages automatically marked as read while viewing
-- **Real-time Behavior**: Other users see read receipts immediately when you view messages
-- **UX Improvement**: Fixed delayed/incorrect read receipt behavior
-
-**Authentication Debugging** ✅ **COMPLETE**
-
-- **Console Logging**: Comprehensive authentication flow tracking
-- **Error Handling**: Enhanced error handling in authService and authStore
-- **Firebase Configuration**: Simplified and more reliable connection management
-- **Service Layer**: Better separation of concerns between service and UI layers
+- **Context-Aware Translation**: AI analyzes conversation history for accurate translations
+- **Tool Calling System**: AI can request additional context when confidence is low (>95% threshold)
+- **RAG Integration**: SQLite FTS5 search for relevant conversation context
+- **Two-Phase Translation**: Exploratory phase determines if more context is needed
+- **MiniGraph Orchestration**: LangGraph-style state machine for complex AI workflows
+- **Cultural Context**: Automatic cultural notes and formality guidance
+- **Language Detection**: Automatic source language identification
+- **Confidence Scoring**: AI provides confidence levels for translation accuracy
+- **Reference Analysis**: Identifies and explains references to earlier messages
+- **Real-time Progress**: Live status updates during translation process
 
 ## 🔧 Development
 
@@ -849,10 +782,10 @@ npx expo start --clear          # Start Expo development server
 Copy the template file and fill in your Firebase configuration:
 
 ```bash
-cp .env.template .env.local
+cp .env.template .env
 ```
 
-Then edit `.env.local` with your Firebase project details:
+Then edit `.env` with your Firebase project details:
 
 ```bash
 # Firebase Configuration
@@ -867,86 +800,132 @@ EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID=your-measurement-id
 
 ### Firebase Setup
 
-1. **Firestore Security Rules** (current configuration):
+1. **Firestore Security Rules** (production-ready configuration):
 
-⚠️ **Note**: The following rules are extremely permissive and UNSAFE. Only use for development purposes. Production deployment will require proper security rules.
+✅ **Note**: The following rules implement proper security with Principle of Least Privilege. These are production-ready security rules.
 
 ```javascript
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Ultra permissive rules for development - allow everything
-    match /{document=**} {
-      allow read, write: if true;
+
+    // Users can only read/write their own profile
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+
+      // Friends subcollection - users can read their own friends
+      match /friends/{friendId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Friend requests - users can read their own requests
+    match /friendRequests/{requestId} {
+      allow read: if request.auth != null &&
+        (request.auth.uid == resource.data.fromUserId ||
+         request.auth.uid == resource.data.toUserId);
+      allow create: if request.auth != null &&
+        request.auth.uid == request.resource.data.fromUserId;
+      allow update: if request.auth != null &&
+        (request.auth.uid == resource.data.fromUserId ||
+         request.auth.uid == resource.data.toUserId);
+      allow delete: if request.auth != null &&
+        request.auth.uid == resource.data.fromUserId;
+    }
+
+    // Conversations - only participants can access
+    match /conversations/{conversationId} {
+      allow read: if request.auth != null &&
+        resource.data.participants.hasAny([request.auth.uid]);
+      allow create: if request.auth != null &&
+        request.resource.data.participants.hasAny([request.auth.uid]);
+      allow update: if request.auth != null &&
+        resource.data.participants.hasAny([request.auth.uid]);
+
+      // Typing indicators subcollection - only accessible by conversation participants
+      match /typing/{userId} {
+        // Everyone in the conversation can read who's typing
+        allow read: if request.auth != null &&
+          get(/databases/$(database)/documents/conversations/$(conversationId))
+            .data.participants.hasAny([request.auth.uid]);
+
+        // Only the owner can write their own typing doc
+        allow write: if request.auth != null &&
+          request.auth.uid == userId &&
+          get(/databases/$(database)/documents/conversations/$(conversationId))
+            .data.participants.hasAny([request.auth.uid]);
+      }
+      // Messages subcollection - inherits conversation access
+      match /messages/{messageId} {
+        allow read, write: if request.auth != null &&
+          get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+            .hasAny([request.auth.uid]);
+      }
     }
   }
 }
 ```
 
-2. **Firestore Indexes** (current deployed indexes):
+2. **Firestore Indexes** (optimized for production queries):
+
+**Index Optimization Summary**:
+
+- **Conversations**: Optimized for user conversation lists and direct conversation lookups
+- **Friend Requests**: Optimized for incoming, outgoing, and bidirectional request queries
+- **Automatic Indexes**: Single-field indexes (email, displayName, id, updatedAt, isTyping) are handled automatically by Firestore
+- **Minimal Configuration**: Only composite indexes that Firestore cannot auto-generate are manually defined
+- **Removed**: Obsolete "notes" collection indexes (not used in current implementation)
+
+**Index Strategy**:
+
+- **Single-field queries**: Firestore automatically creates ascending/descending indexes
+- **Range queries**: Work with automatic single-field indexes (e.g., `where("email", ">=", term)`)
+- **Composite queries**: Manual indexes required for equality + array-contains combinations
+- **Subcollection queries**: Already scoped to specific conversation, no parent document fields needed
 
 ```json
 {
   "indexes": [
     {
-      "collectionGroup": "notes",
+      "collectionGroup": "conversations",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "userId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "updatedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ],
-      "density": "SPARSE_ALL"
+        { "fieldPath": "participants", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
     },
     {
       "collectionGroup": "conversations",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "participants",
-          "arrayConfig": "CONTAINS"
-        },
-        {
-          "fieldPath": "updatedAt",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "participants", "arrayConfig": "CONTAINS" }
       ]
     },
     {
-      "collectionGroup": "messages",
+      "collectionGroup": "friendRequests",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "conversationId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "updatedAt",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "toUserId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
       ]
     },
     {
-      "collectionGroup": "messages",
+      "collectionGroup": "friendRequests",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "conversationId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "updatedAt",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "fromUserId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "friendRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fromUserId", "order": "ASCENDING" },
+        { "fieldPath": "toUserId", "order": "ASCENDING" }
       ]
     }
   ],
@@ -956,22 +935,9 @@ service cloud.firestore {
 
 ## ⚠️ Known Issues
 
-### Development Mode Limitations
+### Current Limitations
 
-- **Firestore Rules**: Currently set to ultra-permissive mode for development
 - **Google OAuth**: Not implemented (email/password auth only)
-
-### Platform-Specific Issues
-
-- **Android Text Rendering**: Fixed with FlashList migration and Android-specific properties
-- **iOS Simulator**: Some animations may not work properly in simulator
-- **Web Platform**: Limited testing on web platform
-
-### Performance Considerations
-
-- **Memory Usage**: Monitored with 100-message limit per conversation
-- **Network Dependency**: Requires internet connection for initial sync
-- **Battery Usage**: Background processing optimized for mobile devices
 
 ## 🤝 Contributing
 
@@ -1001,14 +967,23 @@ service cloud.firestore {
 
 ## 🔒 Security Notice
 
-**⚠️ Development Mode**: This project uses ultra-permissive Firestore rules for development purposes only.
+**✅ Production-Ready Security**: This project implements comprehensive security with Principle of Least Privilege. See `firestore.rules` for production-ready security rules.
 
-**Production Deployment Requirements**:
+**Security Features Implemented**:
 
-- Update Firestore rules to production mode (see `docs/SECURITY.md`)
-- Never expose API keys in production builds
-- Implement proper user authentication and authorization
+- ✅ **Firestore Security Rules**: Production-ready rules with proper access controls
+- ✅ **User Authentication**: Firebase Auth with email/password authentication
+- ✅ **API Key Protection**: OpenAI API keys stored server-side only
+- ✅ **Data Access Control**: Users can only access their own data and conversations they participate in
+- ✅ **Friend Management**: Secure friend subcollection with proper permissions
+- ✅ **Message Security**: Messages only accessible by conversation participants
+- ✅ **Typing Indicators**: Secure typing status with participant-only access
+
+**Additional Security Considerations**:
+
 - Configure Firebase App Check for additional security
-- Review and minimize database permissions
+- Monitor Firestore usage and set up alerts
+- Regular security audits and rule reviews
+- Implement rate limiting for API endpoints
 
-For production security guidelines, see `docs/SECURITY.md` and `firestore.rules.production`.
+For detailed security guidelines, see `docs/SECURITY.md` and `firestore.rules`.

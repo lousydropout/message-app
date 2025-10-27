@@ -47,14 +47,30 @@
 - **Optimized Re-rendering**: Memoization and FlashList for performance
 - **Message Persistence**: SQLite storage for offline messages during app transitions
 
-### AI Integration (Implemented)
+### AI Integration (Advanced Implementation)
 
-- **OpenAI API**: GPT-4o-mini with translation capabilities
+- **OpenAI API**: GPT-4.1-mini with advanced translation capabilities
 - **Server-side Processing**: AWS Lambda for API security and scalability
-- **Translation Features**: Real-time translation with language detection and cultural context
-- **API Response**: Comprehensive translation including original language, translated text, and cultural notes
+- **Context-Aware Translation**: AI analyzes conversation history for accurate translations
+- **Tool Calling System**: AI can request additional context when confidence is low (>95% threshold)
+- **RAG Integration**: SQLite FTS5 search for relevant conversation context
+- **Two-Phase Translation**: Exploratory and execution phases for optimal accuracy
+- **MiniGraph Orchestration**: LangGraph-style state machine for complex AI workflows
+- **Cultural Context**: Automatic cultural notes and formality guidance
+- **Language Detection**: Automatic source language identification
+- **Confidence Scoring**: AI provides confidence levels for translation accuracy
+- **Reference Analysis**: Identifies and explains references to earlier messages
+- **Real-time Progress**: Live status updates during translation process
 - **Client Integration**: MessageBubble component with translation modal
 - **Authentication**: Firebase ID token authentication for secure API access
+
+### Production Deployment
+
+- **Firestore Security Rules**: Production-ready rules with Principle of Least Privilege
+- **Optimized Indexes**: Minimal composite indexes for optimal query performance
+- **Environment Configuration**: Conditional diagnostics tab based on EXPO_PUBLIC_DEV_MODE
+- **Project**: Deployed to MessageAI2 Firebase project
+- **Security**: Comprehensive access controls for all collections and subcollections
 
 ## Note for handling the SQLite library
 

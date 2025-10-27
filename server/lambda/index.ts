@@ -273,7 +273,7 @@ app.post("/translate/explore", authMiddleware, async (c) => {
 
     const prompt = buildPromptA(buildHistoryText(history), content);
     const completion = (await callOpenAIWithRetry({
-      model: "gpt-4o-mini",
+      model: "gpt-4.1-mini",
       messages: [
         {
           role: "system",

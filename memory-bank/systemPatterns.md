@@ -36,6 +36,23 @@
 - Reduced Firestore costs (fewer read operations)
 - Real-time read receipt behavior (immediate feedback to other users)
 
+### 1.1. Firestore Index Optimization Pattern
+
+**Minimal Composite Index Strategy:**
+
+- Only define composite indexes that Firestore cannot auto-generate
+- Single-field indexes (email, displayName, id, updatedAt, isTyping) are automatic
+- Range queries work with automatic single-field indexes
+- Subcollection queries don't need parent document fields (already scoped)
+- Direct conversation lookups require `type + participants` composite index
+
+**Index Configuration:**
+
+- Conversations: `participants + updatedAt`, `type + participants`
+- Friend Requests: `toUserId + status`, `fromUserId + status`, `fromUserId + toUserId`
+- Messages: Automatic single-field indexes handle subcollection queries
+- Users: Automatic single-field indexes handle search queries
+
 ### 2. Friends & Presence Management Pattern
 
 **Scalable Friend System:**
@@ -162,6 +179,40 @@ interface FriendRequest {
 - Friend status indicators without exposing full profiles
 - Blocked users properly excluded from all queries
 - Audit trail preservation for compliance
+
+## AI Translation Patterns
+
+### 1. Tool Calling & RAG Pattern
+
+**Two-Phase Translation System:**
+
+- **Exploratory Phase**: AI analyzes message and conversation history to determine if more context is needed
+- **Tool Calling Decision**: AI either translates directly (high confidence) or requests additional context
+- **RAG Search**: SQLite FTS5 search for relevant conversation context when needed
+- **Execution Phase**: AI translates with full context and cultural awareness
+
+**MiniGraph Orchestration:**
+
+- LangGraph-style state machine for complex AI workflows
+- State transitions: `translate` → `search` (if needed) → `done`
+- Context passing between nodes for seamless data flow
+- Error handling and retry logic built into the graph
+
+### 2. Context-Aware Translation Pattern
+
+**Conversation History Analysis:**
+
+- AI analyzes conversation history for accurate translations
+- Reference analysis identifies and explains references to earlier messages
+- Cultural context preservation for international communicators
+- Confidence scoring provides accuracy levels for translations
+
+**Real-time Progress Updates:**
+
+- Live status updates during translation process
+- User feedback for long-running operations
+- Error handling with graceful fallbacks
+- Caching system for repeated translations (currently disabled for testing)
 
 ## Performance Patterns
 

@@ -65,11 +65,21 @@ Users need intelligent messaging platforms that can assist with communication ch
 
 ### Required AI Features (5 for International Communicator)
 
-1. **Real-time Translation**: ✅ Accurate, natural translation between languages (IMPLEMENTED)
+1. **Real-time Translation**: ✅ Context-aware translation with tool calling and RAG (IMPLEMENTED)
 2. **Language Detection**: ✅ Automatic detection of message language (IMPLEMENTED)
 3. **Cultural Context Hints**: ✅ Suggestions for appropriate cultural responses (IMPLEMENTED)
 4. **Formality Adjustment**: 🚧 Tone adjustment based on conversation context (PENDING)
 5. **Slang/Idiom Explanations**: 🚧 Clear explanations of informal language (PENDING)
+
+### Advanced AI Features (Implemented)
+
+- **Tool Calling System**: AI can request additional context when confidence is low
+- **RAG Integration**: SQLite-based retrieval system for conversation context
+- **Two-Phase Translation**: Exploratory and execution phases for optimal accuracy
+- **MiniGraph Orchestration**: LangGraph-style state machine for complex AI workflows
+- **Confidence Scoring**: AI provides confidence levels for translation accuracy
+- **Reference Analysis**: Identifies and explains references to earlier messages
+- **Real-time Progress**: Live status updates during translation process
 
 ### Core Messaging Features
 

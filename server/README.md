@@ -7,7 +7,7 @@ A secure AWS Lambda-based API server that provides AI-powered translation servic
 The API Server solves a critical security challenge: **protecting OpenAI API keys from client-side exposure**. Instead of embedding API keys in the MessageAI mobile app (which could be reverse-engineered), this server:
 
 1. **Authenticates MessageAI users** using Firebase Admin SDK
-2. **Securely queries OpenAI GPT-4o-mini** for translations and cultural context
+2. **Securely queries OpenAI GPT-4.1-mini** for translations and cultural context
 3. **Returns structured JSON responses** to the MessageAI app
 
 ## 🔐 Security Architecture
@@ -36,7 +36,7 @@ The API Server solves a critical security challenge: **protecting OpenAI API key
 │  │                                                            │ │
 │  │  2. OpenAI API Integration                                 │ │
 │  │     • Use secure server-side API key                       │ │
-│  │     • Query GPT-4o-mini for translation                    │ │
+│  │     • Query GPT-4.1-mini for translation                    │ │
 │  │     • Include cultural context and formality notes         │ │
 │  │                                                            │ │
 │  │  3. Response                                               │ │
@@ -51,7 +51,7 @@ The API Server solves a critical security challenge: **protecting OpenAI API key
 ### Core Functionality
 
 - **Firebase Admin Authentication**: Verifies MessageAI user identity
-- **OpenAI GPT-4o-mini Integration**: High-quality translations with cultural context
+- **OpenAI GPT-4.1-mini Integration**: High-quality translations with cultural context
 - **Secure API Key Management**: OpenAI credentials stored server-side only
 - **AWS Lambda Deployment**: Serverless, cost-effective, auto-scaling
 - **Structured JSON Responses**: Consistent API format for MessageAI integration
@@ -145,7 +145,7 @@ where "language" is what the user wishes "content" be translated into.
 - Node.js 18+ or Bun
 - AWS CLI configured with appropriate permissions
 - Firebase project with Admin SDK access
-- OpenAI API account with GPT-4o-mini access
+- OpenAI API account with GPT-4.1-mini access
 
 ### Installation
 
@@ -279,7 +279,7 @@ server/
 **OpenAI API Errors:**
 
 - Verify OpenAI API key is valid and has sufficient credits
-- Check API key permissions for GPT-4o-mini access
+- Check API key permissions for GPT-4.1-mini access
 - Monitor OpenAI usage limits and quotas
 
 **API Gateway Issues:**
