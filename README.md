@@ -628,6 +628,138 @@ MessageAI implements a sophisticated AI translation system with tool calling and
 8. **Response**: Server returns translation, cultural notes, and confidence score
 9. **Display**: MessageAI shows translation with progress indicators and cultural context
 
+### MiniGraph AI Orchestrator
+
+MessageAI uses a custom MiniGraph implementation (inspired by LangGraph) to orchestrate complex AI workflows. The orchestrator manages the two-phase translation process with intelligent context retrieval and tool calling capabilities.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    MINIGRAPH AI ORCHESTRATOR                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                    TRANSLATION CONTEXT                     │ │
+│  │                                                            │ │
+│  │  • Message to translate                                    │ │
+│  │  • Conversation history (last 5 messages)                  │ │
+│  │  • Speaker and audience information                        │ │
+│  │  • Target language preference                              │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                    NODE: TRANSLATE                         │ │
+│  │                                                            │ │
+│  │  Phase: Exploratory                                        │ │
+│  │  Action: Call /translate/explore                           │ │
+│  │                                                            │ │
+│  │  AI Decision:                                              │ │
+│  │  • High confidence (>95%) → Direct translation             │ │
+│  │  • Low confidence (<95%) → Request more context            │ │
+│  │                                                            │ │
+│  │  Response Types:                                           │ │
+│  │  ┌─────────────────┐    ┌─────────────────┐                │ │
+│  │  │   Translation   │    │   Tool Call     │                │ │
+│  │  │   Response      │    │   Response      │                │ │
+│  │  │                 │    │                 │                │ │
+│  │  │ • translated    │    │ • search_terms  │                │ │
+│  │  │ • cultural_notes│    │ • reason        │                │ │
+│  │  │ • confidence    │    │ • confidence    │                │ │
+│  │  └─────────────────┘    └─────────────────┘                │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                    NODE: SEARCH                            │ │
+│  │                                                            │ │
+│  │  Trigger: Tool Call Response                               │ │
+│  │  Action: SQLite FTS5 Search                                │ │
+│  │                                                            │ │
+│  │  Process:                                                  │ │
+│  │  1. Extract search terms from AI response                  │ │
+│  │  2. Perform FTS5 search in SQLite database                 │ │
+│  │  3. Retrieve relevant conversation context                 │ │
+│  │  4. Format context for AI consumption                      │ │
+│  │                                                            │ │
+│  │  Context Enhancement:                                      │ │
+│  │  • Find messages containing search terms                   │ │
+│  │  • Include speaker names and timestamps                    │ │
+│  │  • Limit to 5 most relevant results                        │ │
+│  │  • Deduplicate and sort by relevance                       │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                    NODE: TRANSLATE                         │ │
+│  │                                                            │ │
+│  │  Phase: Execution                                          │ │
+│  │  Action: Call /translate/execute                           │ │
+│  │                                                            │ │
+│  │  Enhanced Context:                                         │ │
+│  │  • Original message                                        │ │
+│  │  • Conversation history                                    │ │
+│  │  • Additional context from FTS5 search                     │ │
+│  │  • Speaker and audience information                        │ │
+│  │                                                            │ │
+│  │  AI Processing:                                            │ │
+│  │  • Analyze full context for cultural nuances               │ │
+│  │  • Identify references to earlier messages                 │ │
+│  │  │  • Adjust formality based on conversation tone          │ │
+│  │  │  • Provide cultural context and explanations            │ │
+│  │  │  • Generate confidence score for translation            │ │
+│  │                                                            │ │
+│  │  Final Response:                                           │ │
+│  │  • translated_text: Final translation                      │ │
+│  │  • cultural_notes: Cultural context and guidance           │ │
+│  │  • references_earlier: Boolean flag                        │ │
+│  │  • reference_detail: Explanation of references             │ │
+│  │  • confidence: AI confidence score (0-100)                 │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                    NODE: DONE                              │ │
+│  │                                                            │ │
+│  │  Action: Stop execution                                    │ │
+│  │  Result: Return translation to user                        │ │
+│  │                                                            │ │
+│  │  User Experience:                                          │ │
+│  │  • Translation displayed in MessageBubble                  │ │
+│  │  • Cultural notes shown in modal                           │ │
+│  │  • Reference explanations provided                         │ │
+│  │  • Confidence indicator displayed                          │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### State Machine Flow
+
+```
+┌─────────────┐    Tool Call     ┌─────────────┐    Enhanced     ┌─────────────┐
+│  TRANSLATE  │ ───────────────► │   SEARCH    │ ──────────────► │  TRANSLATE  │
+│ (Exploratory)│                 │             │                 │ (Execution) │
+└─────────────┘                  └─────────────┘                 └─────────────┘
+       │                                                               │
+       │ Direct Translation                                            │
+       │ (High Confidence)                                             │
+       ▼                                                               ▼
+┌─────────────┐                                                   ┌─────────────┐
+│    DONE     │ ◄──────────────────────────────────────────────── │    DONE     |│             |                                                   |             |
+│             │                                                   │             │
+└─────────────┘                                                   └─────────────┘
+```
+
+#### Key Features
+
+- **Intelligent Decision Making**: AI determines when additional context is needed
+- **Context-Aware Translation**: Uses conversation history and cultural context
+- **Tool Calling System**: AI can request specific information from the database
+- **RAG Integration**: SQLite FTS5 search provides relevant conversation context
+- **Confidence Scoring**: AI provides confidence levels for translation accuracy
+- **Reference Analysis**: Identifies and explains references to earlier messages
+- **Cultural Intelligence**: Provides cultural notes and formality guidance
+- **Error Handling**: Graceful fallbacks and retry logic built into the graph
+
 ### Environment Configuration
 
 The API Server URL is configured in your `.env` file:
