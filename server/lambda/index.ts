@@ -335,7 +335,7 @@ app.post("/translate/execute", authMiddleware, async (c) => {
     );
 
     const completion = (await callOpenAIWithRetry({
-      model: "gpt-4o-mini",
+      model: "gpt-4.1-mini",
       messages: [
         {
           role: "system",
